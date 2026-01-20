@@ -1,0 +1,556 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<backend>
+    <project>
+        <name>Sports Registration System</name>
+        <version>1.0.0</version>
+        <description>Backend API for sports event registration and management</description>
+    </project>
+
+    <tech_stack>
+        <runtime>Node.js</runtime>
+        <framework>Express.js</framework>
+        <database>MongoDB</database>
+        <authentication>JWT (JSON Web Tokens)</authentication>
+        <payment_gateway>Razorpay / Stripe</payment_gateway>
+        <email_service>NodeMailer / SendGrid</email_service>
+        <file_storage>AWS S3 / Cloudinary</file_storage>
+    </tech_stack>
+
+    <database>
+        <models>
+            <model name="User">
+                <fields>
+                    <field name="_id" type="ObjectId" primary="true"/>
+                    <field name="name" type="String" required="true"/>
+                    <field name="email" type="String" required="true" unique="true"/>
+                    <field name="password" type="String" required="true" hashed="true"/>
+                    <field name="phone" type="String" required="true"/>
+                    <field name="college" type="String" required="true"/>
+                    <field name="role" type="String" enum="participant,admin" default="participant"/>
+                    <field name="isVerified" type="Boolean" default="false"/>
+                    <field name="verificationToken" type="String"/>
+                    <field name="resetPasswordToken" type="String"/>
+                    <field name="resetPasswordExpires" type="Date"/>
+                    <field name="createdAt" type="Date" default="Date.now"/>
+                    <field name="updatedAt" type="Date" default="Date.now"/>
+                </fields>
+                <indexes>
+                    <index fields="email" unique="true"/>
+                    <index fields="role"/>
+                </indexes>
+            </model>
+
+            <model name="Sport">
+                <fields>
+                    <field name="_id" type="ObjectId" primary="true"/>
+                    <field name="name" type="String" required="true"/>
+                    <field name="category" type="String" required="true"/>
+                    <field name="description" type="String"/>
+                    <field name="rules" type="String"/>
+                    <field name="image" type="String"/>
+                    <field name="teamSize" type="Object">
+                        <subfield name="min" type="Number" required="true"/>
+                        <subfield name="max" type="Number" required="true"/>
+                    </field>
+                    <field name="isTeamEvent" type="Boolean" default="false"/>
+                    <field name="fees" type="Number" required="true"/>
+                    <field name="schedule" type="Object">
+                        <subfield name="startDate" type="Date"/>
+                        <subfield name="endDate" type="Date"/>
+                        <subfield name="venue" type="String"/>
+                    </field>
+                    <field name="registrationDeadline" type="Date" required="true"/>
+                    <field name="isRegistrationOpen" type="Boolean" default="false"/>
+                    <field name="maxParticipants" type="Number"/>
+                    <field name="currentParticipants" type="Number" default="0"/>
+                    <field name="createdBy" type="ObjectId" ref="User"/>
+                    <field name="isArchived" type="Boolean" default="false"/>
+                    <field name="createdAt" type="Date" default="Date.now"/>
+                    <field name="updatedAt" type="Date" default="Date.now"/>
+                </fields>
+                <indexes>
+                    <index fields="category"/>
+                    <index fields="isRegistrationOpen"/>
+                    <index fields="registrationDeadline"/>
+                </indexes>
+            </model>
+
+            <model name="Registration">
+                <fields>
+                    <field name="_id" type="ObjectId" primary="true"/>
+                    <field name="participant" type="ObjectId" ref="User" required="true"/>
+                    <field name="sport" type="ObjectId" ref="Sport" required="true"/>
+                    <field name="status" type="String" enum="pending,confirmed,cancelled,waitlist" default="pending"/>
+                    <field name="isTeam" type="Boolean" default="false"/>
+                    <field name="teamName" type="String"/>
+                    <field name="teamMembers" type="Array">
+                        <item type="Object">
+                            <subfield name="name" type="String"/>
+                            <subfield name="email" type="String"/>
+                            <subfield name="phone" type="String"/>
+                        </item>
+                    </field>
+                    <field name="paymentStatus" type="String" enum="pending,completed,failed,refunded" default="pending"/>
+                    <field name="payment" type="ObjectId" ref="Payment"/>
+                    <field name="withdrawalReason" type="String"/>
+                    <field name="registeredAt" type="Date" default="Date.now"/>
+                    <field name="updatedAt" type="Date" default="Date.now"/>
+                </fields>
+                <indexes>
+                    <index fields="participant,sport" unique="true"/>
+                    <index fields="sport"/>
+                    <index fields="status"/>
+                    <index fields="paymentStatus"/>
+                </indexes>
+            </model>
+
+            <model name="Payment">
+                <fields>
+                    <field name="_id" type="ObjectId" primary="true"/>
+                    <field name="registration" type="ObjectId" ref="Registration" required="true"/>
+                    <field name="user" type="ObjectId" ref="User" required="true"/>
+                    <field name="amount" type="Number" required="true"/>
+                    <field name="currency" type="String" default="INR"/>
+                    <field name="method" type="String" enum="online,offline" required="true"/>
+                    <field name="status" type="String" enum="pending,success,failed,refunded" default="pending"/>
+                    <field name="transactionId" type="String"/>
+                    <field name="gatewayResponse" type="Object"/>
+                    <field name="receiptUrl" type="String"/>
+                    <field name="offlineDetails" type="Object">
+                        <subfield name="verifiedBy" type="ObjectId" ref="User"/>
+                        <subfield name="verificationNote" type="String"/>
+                        <subfield name="verifiedAt" type="Date"/>
+                    </field>
+                    <field name="refund" type="Object">
+                        <subfield name="amount" type="Number"/>
+                        <subfield name="reason" type="String"/>
+                        <subfield name="processedBy" type="ObjectId" ref="User"/>
+                        <subfield name="processedAt" type="Date"/>
+                    </field>
+                    <field name="createdAt" type="Date" default="Date.now"/>
+                    <field name="updatedAt" type="Date" default="Date.now"/>
+                </fields>
+                <indexes>
+                    <index fields="user"/>
+                    <index fields="registration"/>
+                    <index fields="status"/>
+                    <index fields="transactionId" unique="true" sparse="true"/>
+                </indexes>
+            </model>
+
+            <model name="Notification">
+                <fields>
+                    <field name="_id" type="ObjectId" primary="true"/>
+                    <field name="recipient" type="ObjectId" ref="User" required="true"/>
+                    <field name="type" type="String" enum="registration,payment,announcement,reminder" required="true"/>
+                    <field name="title" type="String" required="true"/>
+                    <field name="message" type="String" required="true"/>
+                    <field name="isRead" type="Boolean" default="false"/>
+                    <field name="relatedSport" type="ObjectId" ref="Sport"/>
+                    <field name="relatedRegistration" type="ObjectId" ref="Registration"/>
+                    <field name="createdAt" type="Date" default="Date.now"/>
+                </fields>
+                <indexes>
+                    <index fields="recipient,isRead"/>
+                    <index fields="createdAt"/>
+                </indexes>
+            </model>
+
+            <model name="AuditLog">
+                <fields>
+                    <field name="_id" type="ObjectId" primary="true"/>
+                    <field name="user" type="ObjectId" ref="User" required="true"/>
+                    <field name="action" type="String" required="true"/>
+                    <field name="entity" type="String" required="true"/>
+                    <field name="entityId" type="ObjectId"/>
+                    <field name="changes" type="Object"/>
+                    <field name="ipAddress" type="String"/>
+                    <field name="userAgent" type="String"/>
+                    <field name="timestamp" type="Date" default="Date.now"/>
+                </fields>
+                <indexes>
+                    <index fields="user"/>
+                    <index fields="entity,entityId"/>
+                    <index fields="timestamp"/>
+                </indexes>
+            </model>
+        </models>
+    </database>
+
+    <api>
+        <base_url>/api/v1</base_url>
+
+        <routes>
+            <!-- Authentication Routes -->
+            <route_group prefix="/auth">
+                <route method="POST" path="/signup" access="public">
+                    <description>Register new user account</description>
+                    <request>
+                        <body>
+                            <field name="name" type="string" required="true"/>
+                            <field name="email" type="string" required="true"/>
+                            <field name="password" type="string" required="true"/>
+                            <field name="phone" type="string" required="true"/>
+                            <field name="college" type="string" required="true"/>
+                        </body>
+                    </request>
+                    <response status="201">
+                        <field name="success" type="boolean"/>
+                        <field name="message" type="string"/>
+                        <field name="userId" type="string"/>
+                    </response>
+                </route>
+
+                <route method="POST" path="/login" access="public">
+                    <description>User login</description>
+                    <request>
+                        <body>
+                            <field name="email" type="string" required="true"/>
+                            <field name="password" type="string" required="true"/>
+                        </body>
+                    </request>
+                    <response status="200">
+                        <field name="success" type="boolean"/>
+                        <field name="token" type="string"/>
+                        <field name="user" type="object"/>
+                    </response>
+                </route>
+
+                <route method="POST" path="/verify-email/:token" access="public">
+                    <description>Verify email address</description>
+                </route>
+
+                <route method="POST" path="/forgot-password" access="public">
+                    <description>Request password reset</description>
+                </route>
+
+                <route method="POST" path="/reset-password/:token" access="public">
+                    <description>Reset password with token</description>
+                </route>
+
+                <route method="POST" path="/logout" access="protected">
+                    <description>User logout</description>
+                </route>
+
+                <route method="GET" path="/me" access="protected">
+                    <description>Get current user profile</description>
+                </route>
+            </route_group>
+
+            <!-- Sports Routes -->
+            <route_group prefix="/sports">
+                <route method="GET" path="/" access="public">
+                    <description>Get all sports with filters</description>
+                    <query_params>
+                        <param name="category" type="string"/>
+                        <param name="isRegistrationOpen" type="boolean"/>
+                        <param name="search" type="string"/>
+                        <param name="page" type="number" default="1"/>
+                        <param name="limit" type="number" default="10"/>
+                    </query_params>
+                </route>
+
+                <route method="GET" path="/:id" access="public">
+                    <description>Get single sport details</description>
+                </route>
+
+                <route method="POST" path="/" access="admin">
+                    <description>Create new sport</description>
+                    <request>
+                        <body>
+                            <field name="name" type="string" required="true"/>
+                            <field name="category" type="string" required="true"/>
+                            <field name="description" type="string"/>
+                            <field name="teamSize" type="object" required="true"/>
+                            <field name="fees" type="number" required="true"/>
+                            <field name="registrationDeadline" type="date" required="true"/>
+                        </body>
+                    </request>
+                </route>
+
+                <route method="PUT" path="/:id" access="admin">
+                    <description>Update sport details</description>
+                </route>
+
+                <route method="DELETE" path="/:id" access="admin">
+                    <description>Delete sport (if no registrations)</description>
+                </route>
+
+                <route method="PATCH" path="/:id/toggle-registration" access="admin">
+                    <description>Open/close registration</description>
+                </route>
+
+                <route method="POST" path="/:id/duplicate" access="admin">
+                    <description>Duplicate sport for quick creation</description>
+                </route>
+            </route_group>
+
+            <!-- Registration Routes -->
+            <route_group prefix="/registrations">
+                <route method="POST" path="/" access="participant">
+                    <description>Register for a sport</description>
+                    <request>
+                        <body>
+                            <field name="sportId" type="string" required="true"/>
+                            <field name="isTeam" type="boolean"/>
+                            <field name="teamName" type="string"/>
+                            <field name="teamMembers" type="array"/>
+                        </body>
+                    </request>
+                </route>
+
+                <route method="GET" path="/my-registrations" access="participant">
+                    <description>Get current user's registrations</description>
+                </route>
+
+                <route method="GET" path="/:id" access="protected">
+                    <description>Get single registration details</description>
+                </route>
+
+                <route method="PUT" path="/:id" access="participant">
+                    <description>Update registration (before payment)</description>
+                </route>
+
+                <route method="DELETE" path="/:id" access="participant">
+                    <description>Cancel registration</description>
+                    <request>
+                        <body>
+                            <field name="reason" type="string"/>
+                        </body>
+                    </request>
+                </route>
+
+                <route method="GET" path="/sport/:sportId" access="admin">
+                    <description>Get all registrations for a sport</description>
+                </route>
+
+                <route method="GET" path="/college/:collegeName" access="admin">
+                    <description>Get registrations by college</description>
+                </route>
+
+                <route method="PATCH" path="/:id/status" access="admin">
+                    <description>Update registration status</description>
+                </route>
+
+                <route method="GET" path="/export/csv" access="admin">
+                    <description>Export registrations to CSV</description>
+                    <query_params>
+                        <param name="sportId" type="string"/>
+                        <param name="college" type="string"/>
+                        <param name="status" type="string"/>
+                    </query_params>
+                </route>
+            </route_group>
+
+            <!-- Payment Routes -->
+            <route_group prefix="/payments">
+                <route method="POST" path="/initiate" access="participant">
+                    <description>Initiate online payment</description>
+                    <request>
+                        <body>
+                            <field name="registrationId" type="string" required="true"/>
+                            <field name="method" type="string" required="true"/>
+                        </body>
+                    </request>
+                </route>
+
+                <route method="POST" path="/verify" access="participant">
+                    <description>Verify payment callback</description>
+                </route>
+
+                <route method="POST" path="/mark-offline" access="admin">
+                    <description>Mark offline payment as received</description>
+                    <request>
+                        <body>
+                            <field name="registrationId" type="string" required="true"/>
+                            <field name="amount" type="number" required="true"/>
+                            <field name="verificationNote" type="string"/>
+                        </body>
+                    </request>
+                </route>
+
+                <route method="GET" path="/receipt/:paymentId" access="participant">
+                    <description>Download payment receipt</description>
+                </route>
+
+                <route method="GET" path="/history" access="participant">
+                    <description>Get user's payment history</description>
+                </route>
+
+                <route method="POST" path="/:paymentId/refund" access="admin">
+                    <description>Process refund</description>
+                    <request>
+                        <body>
+                            <field name="amount" type="number" required="true"/>
+                            <field name="reason" type="string" required="true"/>
+                        </body>
+                    </request>
+                </route>
+
+                <route method="GET" path="/reconciliation" access="admin">
+                    <description>Get payment reconciliation report</description>
+                </route>
+            </route_group>
+
+            <!-- User/Profile Routes -->
+            <route_group prefix="/users">
+                <route method="GET" path="/profile" access="participant">
+                    <description>Get user profile</description>
+                </route>
+
+                <route method="PUT" path="/profile" access="participant">
+                    <description>Update profile information</description>
+                </route>
+
+                <route method="PUT" path="/change-password" access="protected">
+                    <description>Change password</description>
+                </route>
+
+                <route method="GET" path="/" access="admin">
+                    <description>Get all users (admin only)</description>
+                </route>
+
+                <route method="GET" path="/:id" access="admin">
+                    <description>Get user details (admin only)</description>
+                </route>
+            </route_group>
+
+            <!-- Notification Routes -->
+            <route_group prefix="/notifications">
+                <route method="GET" path="/" access="participant">
+                    <description>Get user notifications</description>
+                </route>
+
+                <route method="PATCH" path="/:id/read" access="participant">
+                    <description>Mark notification as read</description>
+                </route>
+
+                <route method="PATCH" path="/mark-all-read" access="participant">
+                    <description>Mark all notifications as read</description>
+                </route>
+
+                <route method="POST" path="/broadcast" access="admin">
+                    <description>Send broadcast notification</description>
+                    <request>
+                        <body>
+                            <field name="title" type="string" required="true"/>
+                            <field name="message" type="string" required="true"/>
+                            <field name="targetType" type="string" enum="all,sport,college"/>
+                            <field name="targetId" type="string"/>
+                        </body>
+                    </request>
+                </route>
+            </route_group>
+
+            <!-- Admin Analytics Routes -->
+            <route_group prefix="/admin/analytics">
+                <route method="GET" path="/dashboard" access="admin">
+                    <description>Get admin dashboard statistics</description>
+                </route>
+
+                <route method="GET" path="/sport-wise" access="admin">
+                    <description>Get sport-wise registration analytics</description>
+                </route>
+
+                <route method="GET" path="/college-wise" access="admin">
+                    <description>Get college-wise participation statistics</description>
+                </route>
+
+                <route method="GET" path="/revenue" access="admin">
+                    <description>Get revenue analytics</description>
+                </route>
+
+                <route method="GET" path="/trends" access="admin">
+                    <description>Get registration trends over time</description>
+                </route>
+            </route_group>
+
+            <!-- Audit Log Routes -->
+            <route_group prefix="/admin/audit-logs">
+                <route method="GET" path="/" access="admin">
+                    <description>Get audit logs with filters</description>
+                    <query_params>
+                        <param name="user" type="string"/>
+                        <param name="action" type="string"/>
+                        <param name="entity" type="string"/>
+                        <param name="startDate" type="date"/>
+                        <param name="endDate" type="date"/>
+                    </query_params>
+                </route>
+            </route_group>
+        </routes>
+    </api>
+
+    <middleware>
+        <item name="authMiddleware">
+            <description>Verify JWT token and attach user to request</description>
+        </item>
+        <item name="roleMiddleware">
+            <description>Check user role (admin/participant)</description>
+        </item>
+        <item name="validationMiddleware">
+            <description>Validate request body using Joi/Yup</description>
+        </item>
+        <item name="errorHandler">
+            <description>Global error handling middleware</description>
+        </item>
+        <item name="rateLimiter">
+            <description>Rate limiting to prevent API abuse</description>
+        </item>
+        <item name="corsMiddleware">
+            <description>Handle CORS for frontend integration</description>
+        </item>
+        <item name="auditLogger">
+            <description>Log all admin actions to audit log</description>
+        </item>
+    </middleware>
+
+    <services>
+        <service name="EmailService">
+            <description>Send transactional emails (verification, payment confirmation, etc.)</description>
+        </service>
+        <service name="PaymentService">
+            <description>Handle payment gateway integration</description>
+        </service>
+        <service name="PDFService">
+            <description>Generate receipts and certificates</description>
+        </service>
+        <service name="CSVService">
+            <description>Export data to CSV format</description>
+        </service>
+        <service name="NotificationService">
+            <description>Send notifications to users</description>
+        </service>
+        <service name="StorageService">
+            <description>Handle file uploads (images, documents)</description>
+        </service>
+    </services>
+
+    <security>
+        <item>Password hashing with bcrypt (salt rounds: 10)</item>
+        <item>JWT token expiration: 7 days</item>
+        <item>Rate limiting: 100 requests per 15 minutes per IP</item>
+        <item>Input validation and sanitization</item>
+        <item>CORS configuration for allowed origins</item>
+        <item>Helmet.js for security headers</item>
+        <item>MongoDB injection prevention</item>
+        <item>Two-factor authentication for admin (optional)</item>
+    </security>
+
+    <environment_variables>
+        <var name="PORT">Server port</var>
+        <var name="MONGODB_URI">MongoDB connection string</var>
+        <var name="JWT_SECRET">Secret key for JWT signing</var>
+        <var name="JWT_EXPIRE">JWT expiration time</var>
+        <var name="EMAIL_SERVICE">Email service provider</var>
+        <var name="EMAIL_USER">Email username</var>
+        <var name="EMAIL_PASSWORD">Email password</var>
+        <var name="RAZORPAY_KEY_ID">Razorpay API key</var>
+        <var name="RAZORPAY_KEY_SECRET">Razorpay secret key</var>
+        <var name="AWS_ACCESS_KEY">AWS access key for S3</var>
+        <var name="AWS_SECRET_KEY">AWS secret key</var>
+        <var name="AWS_BUCKET_NAME">S3 bucket name</var>
+        <var name="FRONTEND_URL">Frontend URL for CORS and redirects</var>
+        <var name="NODE_ENV">Environment (development/production)</var>
+    </environment_variables>
+</backend>
