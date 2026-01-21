@@ -249,27 +249,12 @@ Deno.test({
       );
 
       // Create another user
-      const user2Data = {
-        email: `test_${Date.now()}_5@example.com`,
-        password: "TestPass123!",
-        name: "Test User 5",
-        phone: `9${Math.floor(100000000 + Math.random() * 900000000)}`,
-        college: "Another College",
-      };
-
-      const signupResponse = await request(ctx.config, "auth", "signup", {
-        method: "POST",
-        body: user2Data,
-      });
-
-      if (signupResponse.data.data?.user?.id) {
-        ctx.createdResources.users.push(signupResponse.data.data.user.id);
-      }
+      const user2 = await setupTestUser(ctx);
 
       // Try to create order for user1's registration as user2
       const response = await request(ctx.config, "payments", "create-order", {
         method: "POST",
-        accessToken: signupResponse.data.data?.user?.access_token,
+        accessToken: user2.accessToken,
         body: { registration_id: registration.id },
       });
 

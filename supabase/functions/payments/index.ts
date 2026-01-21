@@ -210,10 +210,9 @@ serve(async (req: Request) => {
 
       if (updateError) {
         // DB update failed after Razorpay order created
-        // Mark payment as needing reconciliation but don't fail the request
-        // The Razorpay order can be reconciled later via webhook
+        // We must return an error so the client doesn't get an order ID that isn't findable
         console.error("Failed to link Razorpay order to payment:", updateError);
-        // Still return success with the order since user can complete payment
+        return error("Failed to link order to payment", 500);
       }
 
       return success({
@@ -283,27 +282,29 @@ serve(async (req: Request) => {
       }
 
       if (!isValidSignature) {
-        // Mark payment as failed
-        await adminClient
-          .from("payments")
-          .update({
-            status: "failed",
-            razorpay_payment_id: body.razorpay_payment_id,
-            gateway_response: { error: "Invalid signature" },
-          })
-          .eq("id", payment.id);
+        // Mark payment as failed only if it was pending
+        if (payment.status === "pending") {
+          await adminClient
+            .from("payments")
+            .update({
+              status: "failed",
+              razorpay_payment_id: body.razorpay_payment_id,
+              gateway_response: { error: "Invalid signature" },
+            })
+            .eq("id", payment.id);
 
-        // Log security event
-        await createAuditLog(
-          adminClient,
-          user.id,
-          "PAYMENT_SIGNATURE_FAILED",
-          "payments",
-          payment.id,
-          null,
-          { razorpay_payment_id: body.razorpay_payment_id },
-          req
-        );
+          // Log security event
+          await createAuditLog(
+            adminClient,
+            user.id,
+            "PAYMENT_SIGNATURE_FAILED",
+            "payments",
+            payment.id,
+            null,
+            { razorpay_payment_id: body.razorpay_payment_id },
+            req
+          );
+        }
 
         return error("Payment verification failed", 400);
       }

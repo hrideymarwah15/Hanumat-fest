@@ -126,9 +126,13 @@ serve(async (req: Request) => {
       }
 
       // Get applicable fees
-      const { data: feesData } = await supabase.rpc("get_applicable_fees", {
+      const { data: feesData, error: feesError } = await supabase.rpc("get_applicable_fees", {
         sport_id: sport.id,
       });
+
+      if (feesError) {
+        console.error("Failed to get fees:", feesError);
+      }
 
       // Check if user can register
       let canRegister = false;
@@ -136,12 +140,15 @@ serve(async (req: Request) => {
       let waitlistAvailable = false;
 
       if (user) {
-        const { data: eligibility } = await supabase.rpc("can_register_for_sport", {
+        const { data: eligibility, error: eligibilityError } = await supabase.rpc("can_register_for_sport", {
           p_sport_id: sport.id,
           p_user_id: user.id,
         });
 
-        if (eligibility && eligibility.length > 0) {
+        if (eligibilityError) {
+          console.error("Failed to check eligibility:", eligibilityError);
+          registerReason = "Error checking eligibility";
+        } else if (eligibility && eligibility.length > 0) {
           canRegister = eligibility[0].can_register;
           registerReason = eligibility[0].reason;
           waitlistAvailable = eligibility[0].waitlist_available;
@@ -154,7 +161,7 @@ serve(async (req: Request) => {
 
       return success({
         sport,
-        applicable_fees: feesData || sport.fees,
+        applicable_fees: (feesData !== null && feesData !== undefined) ? feesData : sport.fees,
         can_register: canRegister,
         register_reason: registerReason,
         waitlist_available: waitlistAvailable,
@@ -331,10 +338,11 @@ serve(async (req: Request) => {
       // Validate early bird deadline if provided or updating related dates
       if (body.early_bird_deadline || (oldSport.early_bird_deadline && (body.registration_start || body.registration_deadline))) {
         const earlyBird = new Date(body.early_bird_deadline ?? oldSport.early_bird_deadline);
-        if (!isNaN(earlyBird.getTime())) {
-          if (earlyBird <= regStart || earlyBird >= regDeadline) {
-            return error("Early bird deadline must be between registration start and deadline");
-          }
+        if (isNaN(earlyBird.getTime())) {
+          return error("Invalid date format for early bird deadline");
+        }
+        if (earlyBird <= regStart || earlyBird >= regDeadline) {
+          return error("Early bird deadline must be between registration start and deadline");
         }
       }
       

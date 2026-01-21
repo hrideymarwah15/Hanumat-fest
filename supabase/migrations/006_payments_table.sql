@@ -97,7 +97,9 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_catalog;
 
 -- Trigger for receipt number generation
 CREATE TRIGGER generate_payment_receipt_number
@@ -133,7 +135,9 @@ BEGIN
     
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_catalog;
 
 -- Trigger for syncing payment status
 CREATE TRIGGER sync_reg_payment_status

@@ -202,10 +202,15 @@ serve(async (req: Request) => {
       const adminClient = createAdminClient();
 
       // Check eligibility
-      const { data: eligibility } = await supabase.rpc("can_register_for_sport", {
+      const { data: eligibility, error: rpcError } = await supabase.rpc("can_register_for_sport", {
         p_sport_id: body.sport_id,
         p_user_id: user.id,
       });
+
+      if (rpcError) {
+        console.error("Eligibility check failed:", rpcError);
+        return error("Failed to check eligibility", 500);
+      }
 
       const eligResult = eligibility?.[0];
       if (!eligResult?.can_register) {
@@ -261,44 +266,58 @@ serve(async (req: Request) => {
         waitlistPosition = position;
       }
 
-      // Create registration
-      const { data: registration, error: insertError } = await adminClient
-        .from("registrations")
-        .insert({
-          participant_id: user.id,
-          sport_id: body.sport_id,
-          status: initialStatus,
-          is_team: sport.is_team_event || body.is_team || false,
-          team_name: body.team_name,
-          waitlist_position: waitlistPosition,
-        })
-        .select()
-        .single();
+      // Create registration with cleanup on failure
+      let registration;
+      try {
+        const { data: regData, error: insertError } = await adminClient
+          .from("registrations")
+          .insert({
+            participant_id: user.id,
+            sport_id: body.sport_id,
+            status: initialStatus,
+            is_team: sport.is_team_event || body.is_team || false,
+            team_name: body.team_name,
+            waitlist_position: waitlistPosition,
+          })
+          .select()
+          .single();
 
-      if (insertError) {
-        console.error("Insert error:", insertError);
-        return error("Failed to create registration", 500);
-      }
-
-      // Add team members if team event (check sport.is_team_event or body.is_team)
-      if ((sport.is_team_event || body.is_team) && body.team_members && body.team_members.length > 0) {
-        const teamMembersData = body.team_members.map((member, index) => ({
-          registration_id: registration.id,
-          member_order: index + 1,
-          name: member.name,
-          email: member.email,
-          phone: member.phone,
-          is_captain: member.is_captain || false,
-        }));
-
-        const { error: teamError } = await adminClient.from("team_members").insert(teamMembersData);
-        
-        if (teamError) {
-          console.error("Team members insert error:", teamError);
-          // Rollback registration on team insert failure
-          await adminClient.from("registrations").delete().eq("id", registration.id);
-          return error("Failed to add team members", 500);
+        if (insertError) {
+          throw insertError;
         }
+        registration = regData;
+
+        // Add team members if team event
+        if ((sport.is_team_event || body.is_team) && body.team_members && body.team_members.length > 0) {
+          const teamMembersData = body.team_members.map((member, index) => ({
+            registration_id: registration.id,
+            member_order: index + 1,
+            name: member.name,
+            email: member.email,
+            phone: member.phone,
+            is_captain: member.is_captain || false,
+          }));
+
+          const { error: teamError } = await adminClient.from("team_members").insert(teamMembersData);
+          
+          if (teamError) {
+            console.error("Team members insert error:", teamError);
+            // Rollback registration on team insert failure
+            await adminClient.from("registrations").delete().eq("id", registration.id);
+            throw teamError;
+          }
+        }
+      } catch (err) {
+        console.error("Registration process failed:", err);
+        
+        // Cleanup waitlist if assigned
+        if (waitlistPosition !== null) {
+          await adminClient.rpc("release_waitlist_position", {
+            p_sport_id: body.sport_id,
+            p_position: waitlistPosition
+          });
+        }
+        return error("Failed to create registration", 500);
       }
 
       // Create notification

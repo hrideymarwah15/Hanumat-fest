@@ -101,7 +101,6 @@ run_tests() {
         "--allow-net"
         "--allow-env"
         "--allow-read"
-        "--unstable"
     )
     
     # Add filter if provided
