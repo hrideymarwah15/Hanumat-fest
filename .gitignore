@@ -1,0 +1,35 @@
+# .gitignore for Supabase project
+
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Supabase
+.supabase/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build
+dist/
+build/
+
+# Review transcripts and temporary docs
+tt.md
+error.md
+*_review.md
+*_transcript.md
