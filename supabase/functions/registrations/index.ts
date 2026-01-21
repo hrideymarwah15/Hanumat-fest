@@ -303,7 +303,10 @@ serve(async (req: Request) => {
           if (teamError) {
             console.error("Team members insert error:", teamError);
             // Rollback registration on team insert failure
-            await adminClient.from("registrations").delete().eq("id", registration.id);
+            const { error: rollbackError } = await adminClient.from("registrations").delete().eq("id", registration.id);
+            if (rollbackError) {
+                console.error("Failed to rollback registration after team insert error:", rollbackError);
+            }
             throw teamError;
           }
         }
@@ -312,12 +315,15 @@ serve(async (req: Request) => {
         
         // Cleanup waitlist if assigned
         if (waitlistPosition !== null) {
-          await adminClient.rpc("release_waitlist_position", {
+          const { error: rpcError } = await adminClient.rpc("release_waitlist_position", {
             p_sport_id: body.sport_id,
             p_position: waitlistPosition
           });
+          if (rpcError) {
+             console.error(`Failed to release waitlist position (Sport: ${body.sport_id}, Pos: ${waitlistPosition}):`, rpcError);
+          }
         }
-        return error("Failed to create registration", 500);
+        throw err;
       }
 
       // Create notification

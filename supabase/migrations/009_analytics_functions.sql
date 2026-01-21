@@ -23,7 +23,6 @@ BEGIN
         'colleges_count', (SELECT COUNT(DISTINCT college) FROM profiles WHERE id IN (SELECT participant_id FROM registrations WHERE status = 'confirmed'))
     );
 END;
-END;
 $$ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_catalog;
 

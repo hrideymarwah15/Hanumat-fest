@@ -99,7 +99,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog;
+SET search_path = pg_catalog, public;
 
 -- Trigger for receipt number generation
 CREATE TRIGGER generate_payment_receipt_number
@@ -137,7 +137,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog;
+SET search_path = pg_catalog, public;
 
 -- Trigger for syncing payment status
 CREATE TRIGGER sync_reg_payment_status

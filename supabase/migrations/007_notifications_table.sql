@@ -111,7 +111,7 @@ BEGIN
     RETURN new_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = public, pg_catalog;
+SET search_path = pg_catalog, public;
 
 -- Secure the function
 REVOKE EXECUTE ON FUNCTION create_notification FROM PUBLIC;
