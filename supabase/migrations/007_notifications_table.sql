@@ -111,7 +111,11 @@ BEGIN
     RETURN new_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = pg_catalog, public;
+SET search_path = public, pg_catalog;
+
+-- Secure the function
+REVOKE EXECUTE ON FUNCTION create_notification FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION create_notification TO authenticated, service_role;
 
 CREATE POLICY "Admins can manage all notifications"
     ON notifications FOR ALL

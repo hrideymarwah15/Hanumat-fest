@@ -278,7 +278,8 @@ CREATE POLICY "Users can create registrations"
 
 CREATE POLICY "Users can update own pending registrations"
     ON registrations FOR UPDATE
-    USING (participant_id = auth.uid() AND status IN ('pending', 'payment_pending'));
+    USING (participant_id = auth.uid() AND status IN ('pending', 'payment_pending'))
+    WITH CHECK (participant_id = auth.uid() AND status IN ('pending', 'payment_pending'));
 
 CREATE POLICY "Admins can view all registrations"
     ON registrations FOR SELECT

@@ -241,8 +241,10 @@ serve(async (req: Request) => {
           }).catch((err) => console.error(`Email to recipient ${recipient.id} failed:`, err))
         );
 
-        // Don't wait for all emails to complete
-        Promise.all(emailPromises).catch(console.error);
+        // Wait for all emails to complete (best-effort)
+        await Promise.all(emailPromises).catch((err) => {
+          console.error("Email send failed", err);
+        });
       }
 
       // Create audit log
