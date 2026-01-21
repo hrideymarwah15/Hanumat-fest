@@ -1,0 +1,1842 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<backend>
+    <project>
+        <name>Sports Registration System</name>
+        <version>2.1.0</version>
+        <description>Backend API for sports event registration and management - Powered by Supabase (Improved Flow)</description>
+    </project>
+
+    <tech_stack>
+        <runtime>Supabase Edge Functions (Deno)</runtime>
+        <database>PostgreSQL (Supabase Database)</database>
+        <authentication>Supabase Auth</authentication>
+        <payment_gateway>Razorpay</payment_gateway>
+        <email_service>Resend (via Edge Functions)</email_service>
+        <file_storage>Supabase Storage</file_storage>
+        <realtime>Supabase Realtime</realtime>
+        <scheduling>pg_cron (Supabase Extensions)</scheduling>
+    </tech_stack>
+
+    <!-- ==================== DATABASE SCHEMA ==================== -->
+    <!-- Tables are ordered by dependency (no forward references) -->
+    
+    <database>
+        <tables>
+            <!-- ========== 1. PROFILES TABLE (extends auth.users) ========== -->
+            <table name="profiles" order="1">
+                <description>Extended user profile information linked to auth.users</description>
+                <columns>
+                    <column name="id" type="UUID" primary="true" references="auth.users(id)" on_delete="CASCADE"/>
+                    <column name="email" type="TEXT" required="true"/>
+                    <column name="name" type="TEXT" required="true"/>
+                    <column name="phone" type="TEXT" required="true"/>
+                    <column name="college" type="TEXT" required="true"/>
+                    <column name="role" type="TEXT" default="participant" check="role IN ('participant', 'admin', 'coordinator')"/>
+                    <column name="avatar_url" type="TEXT"/>
+                    <column name="email_verified" type="BOOLEAN" default="false"/>
+                    <column name="is_active" type="BOOLEAN" default="true"/>
+                    <column name="created_at" type="TIMESTAMPTZ" default="now()"/>
+                    <column name="updated_at" type="TIMESTAMPTZ" default="now()"/>
+                </columns>
+                <indexes>
+                    <index columns="email" unique="true"/>
+                    <index columns="role"/>
+                    <index columns="college"/>
+                    <index columns="is_active"/>
+                </indexes>
+                <rls_policies>
+                    <policy name="Users can view own profile" action="SELECT" using="auth.uid() = id"/>
+                    <policy name="Users can update own profile" action="UPDATE" using="auth.uid() = id" check="role = OLD.role"/>
+                    <policy name="Admins can view all profiles" action="SELECT" using="is_admin()"/>
+                    <policy name="Admins can update any profile" action="UPDATE" using="is_admin()"/>
+                    <policy name="Enable insert for authenticated users only" action="INSERT" check="auth.uid() = id"/>
+                </rls_policies>
+                <triggers>
+                    <trigger name="set_updated_at" event="BEFORE UPDATE" function="handle_updated_at()"/>
+                    <trigger name="on_auth_user_created" event="AFTER INSERT ON auth.users" function="handle_new_user()"/>
+                </triggers>
+            </table>
+
+            <!-- ========== 2. SPORTS TABLE ========== -->
+            <table name="sports" order="2">
+                <description>Sports/events available for registration</description>
+                <columns>
+                    <column name="id" type="UUID" primary="true" default="gen_random_uuid()"/>
+                    <column name="name" type="TEXT" required="true"/>
+                    <column name="slug" type="TEXT" required="true" unique="true"/>
+                    <column name="category" type="TEXT" required="true" check="category IN ('indoor', 'outdoor', 'esports', 'athletics')"/>
+                    <column name="description" type="TEXT"/>
+                    <column name="rules" type="TEXT"/>
+                    <column name="image_url" type="TEXT"/>
+                    
+                    <!-- Team Configuration -->
+                    <column name="is_team_event" type="BOOLEAN" default="false"/>
+                    <column name="team_size_min" type="INTEGER" required="true" default="1"/>
+                    <column name="team_size_max" type="INTEGER" required="true" default="1"/>
+                    
+                    <!-- Pricing -->
+                    <column name="fees" type="DECIMAL(10,2)" required="true"/>
+                    <column name="early_bird_fees" type="DECIMAL(10,2)"/>
+                    <column name="early_bird_deadline" type="TIMESTAMPTZ"/>
+                    
+                    <!-- Schedule -->
+                    <column name="schedule_start" type="TIMESTAMPTZ"/>
+                    <column name="schedule_end" type="TIMESTAMPTZ"/>
+                    <column name="venue" type="TEXT"/>
+                    
+                    <!-- Registration Control -->
+                    <column name="registration_start" type="TIMESTAMPTZ" required="true"/>
+                    <column name="registration_deadline" type="TIMESTAMPTZ" required="true"/>
+                    <column name="is_registration_open" type="BOOLEAN" default="false"/>
+                    
+                    <!-- Capacity -->
+                    <column name="max_participants" type="INTEGER"/>
+                    <column name="current_participants" type="INTEGER" default="0"/>
+                    <column name="waitlist_enabled" type="BOOLEAN" default="true"/>
+                    <column name="max_waitlist" type="INTEGER" default="10"/>
+                    
+                    <!-- Metadata -->
+                    <column name="created_by" type="UUID" references="profiles(id)"/>
+                    <column name="is_archived" type="BOOLEAN" default="false"/>
+                    <column name="created_at" type="TIMESTAMPTZ" default="now()"/>
+                    <column name="updated_at" type="TIMESTAMPTZ" default="now()"/>
+                </columns>
+                <constraints>
+                    <check name="valid_team_size" condition="team_size_max >= team_size_min"/>
+                    <check name="valid_registration_period" condition="registration_deadline > registration_start"/>
+                    <check name="valid_schedule" condition="schedule_end IS NULL OR schedule_end > schedule_start"/>
+                    <check name="valid_capacity" condition="current_participants >= 0"/>
+                </constraints>
+                <indexes>
+                    <index columns="slug" unique="true"/>
+                    <index columns="category"/>
+                    <index columns="is_registration_open"/>
+                    <index columns="registration_deadline"/>
+                    <index columns="is_archived"/>
+                    <index columns="registration_start, registration_deadline"/>
+                </indexes>
+                <rls_policies>
+                    <policy name="Anyone can view active sports" action="SELECT" using="is_archived = false"/>
+                    <policy name="Admins can view all sports" action="SELECT" using="is_admin()"/>
+                    <policy name="Admins can insert sports" action="INSERT" check="is_admin()"/>
+                    <policy name="Admins can update sports" action="UPDATE" using="is_admin()"/>
+                    <policy name="Admins can delete sports" action="DELETE" using="is_admin()"/>
+                </rls_policies>
+                <triggers>
+                    <trigger name="set_updated_at" event="BEFORE UPDATE" function="handle_updated_at()"/>
+                    <trigger name="generate_slug" event="BEFORE INSERT" function="generate_sport_slug()"/>
+                    <trigger name="auto_close_registration" event="BEFORE UPDATE" function="check_registration_capacity()"/>
+                </triggers>
+            </table>
+
+            <!-- ========== 3. REGISTRATIONS TABLE ========== -->
+            <table name="registrations" order="3">
+                <description>Sport registration records - Central entity for user-sport relationship</description>
+                <columns>
+                    <column name="id" type="UUID" primary="true" default="gen_random_uuid()"/>
+                    <column name="registration_number" type="TEXT" unique="true"/>
+                    <column name="participant_id" type="UUID" references="profiles(id)" required="true"/>
+                    <column name="sport_id" type="UUID" references="sports(id)" required="true"/>
+                    
+                    <!-- Status Flow: pending -> payment_pending -> confirmed | waitlist -> cancelled -->
+                    <column name="status" type="TEXT" default="pending" check="status IN ('pending', 'payment_pending', 'confirmed', 'waitlist', 'cancelled', 'withdrawn')"/>
+                    
+                    <!-- Team Details -->
+                    <column name="is_team" type="BOOLEAN" default="false"/>
+                    <column name="team_name" type="TEXT"/>
+                    
+                    <!-- Payment Tracking (denormalized for quick access) -->
+                    <column name="payment_status" type="TEXT" default="pending" check="payment_status IN ('pending', 'processing', 'completed', 'failed', 'refunded')"/>
+                    <column name="amount_paid" type="DECIMAL(10,2)" default="0"/>
+                    
+                    <!-- Position Tracking -->
+                    <column name="waitlist_position" type="INTEGER"/>
+                    <column name="confirmed_at" type="TIMESTAMPTZ"/>
+                    
+                    <!-- Cancellation -->
+                    <column name="withdrawal_reason" type="TEXT"/>
+                    <column name="cancelled_at" type="TIMESTAMPTZ"/>
+                    <column name="cancelled_by" type="UUID" references="profiles(id)"/>
+                    
+                    <!-- Timestamps -->
+                    <column name="registered_at" type="TIMESTAMPTZ" default="now()"/>
+                    <column name="updated_at" type="TIMESTAMPTZ" default="now()"/>
+                </columns>
+                <constraints>
+                    <unique columns="participant_id, sport_id" name="unique_participant_sport"/>
+                </constraints>
+                <indexes>
+                    <index columns="participant_id"/>
+                    <index columns="sport_id"/>
+                    <index columns="status"/>
+                    <index columns="payment_status"/>
+                    <index columns="registration_number"/>
+                    <index columns="sport_id, waitlist_position" where="status = 'waitlist'"/>
+                </indexes>
+                <rls_policies>
+                    <policy name="Users can view own registrations" action="SELECT" using="participant_id = auth.uid()"/>
+                    <policy name="Users can create registrations" action="INSERT" check="participant_id = auth.uid()"/>
+                    <policy name="Users can update own pending registrations" action="UPDATE" using="participant_id = auth.uid() AND status IN ('pending', 'payment_pending')"/>
+                    <policy name="Admins can view all registrations" action="SELECT" using="is_admin()"/>
+                    <policy name="Admins can update any registration" action="UPDATE" using="is_admin()"/>
+                </rls_policies>
+                <triggers>
+                    <trigger name="set_updated_at" event="BEFORE UPDATE" function="handle_updated_at()"/>
+                    <trigger name="generate_registration_number" event="BEFORE INSERT" function="generate_registration_number()"/>
+                    <trigger name="update_participant_count" event="AFTER INSERT OR UPDATE OR DELETE" function="sync_sport_participant_count()"/>
+                    <trigger name="handle_status_change" event="AFTER UPDATE" function="handle_registration_status_change()"/>
+                </triggers>
+            </table>
+
+            <!-- ========== 4. TEAM MEMBERS TABLE ========== -->
+            <table name="team_members" order="4">
+                <description>Team member details for team registrations</description>
+                <columns>
+                    <column name="id" type="UUID" primary="true" default="gen_random_uuid()"/>
+                    <column name="registration_id" type="UUID" references="registrations(id)" on_delete="CASCADE" required="true"/>
+                    <column name="member_order" type="INTEGER" required="true"/>
+                    <column name="name" type="TEXT" required="true"/>
+                    <column name="email" type="TEXT"/>
+                    <column name="phone" type="TEXT"/>
+                    <column name="is_captain" type="BOOLEAN" default="false"/>
+                    <column name="created_at" type="TIMESTAMPTZ" default="now()"/>
+                </columns>
+                <constraints>
+                    <unique columns="registration_id, member_order" name="unique_member_order"/>
+                    <unique columns="registration_id, email" name="unique_member_email" where="email IS NOT NULL"/>
+                </constraints>
+                <indexes>
+                    <index columns="registration_id"/>
+                    <index columns="email"/>
+                </indexes>
+                <rls_policies>
+                    <policy name="Users can view own team members" action="SELECT" using="EXISTS (SELECT 1 FROM registrations r WHERE r.id = registration_id AND r.participant_id = auth.uid())"/>
+                    <policy name="Users can manage own team members" action="ALL" using="EXISTS (SELECT 1 FROM registrations r WHERE r.id = registration_id AND r.participant_id = auth.uid() AND r.status IN ('pending', 'payment_pending'))"/>
+                    <policy name="Admins can view all team members" action="SELECT" using="is_admin()"/>
+                    <policy name="Admins can manage all team members" action="ALL" using="is_admin()"/>
+                </rls_policies>
+            </table>
+
+            <!-- ========== 5. PAYMENTS TABLE ========== -->
+            <table name="payments" order="5">
+                <description>Payment transaction records</description>
+                <columns>
+                    <column name="id" type="UUID" primary="true" default="gen_random_uuid()"/>
+                    <column name="registration_id" type="UUID" references="registrations(id)" required="true"/>
+                    <column name="user_id" type="UUID" references="profiles(id)" required="true"/>
+                    
+                    <!-- Amount Details -->
+                    <column name="amount" type="DECIMAL(10,2)" required="true"/>
+                    <column name="currency" type="TEXT" default="INR"/>
+                    <column name="convenience_fee" type="DECIMAL(10,2)" default="0"/>
+                    <column name="total_amount" type="DECIMAL(10,2)" required="true"/>
+                    
+                    <!-- Payment Method -->
+                    <column name="method" type="TEXT" required="true" check="method IN ('online', 'offline', 'free')"/>
+                    
+                    <!-- Status Flow: pending -> processing -> success | failed -> refunded (partial) -->
+                    <column name="status" type="TEXT" default="pending" check="status IN ('pending', 'processing', 'success', 'failed', 'refunded', 'partially_refunded')"/>
+                    
+                    <!-- Razorpay Details -->
+                    <column name="razorpay_order_id" type="TEXT"/>
+                    <column name="razorpay_payment_id" type="TEXT"/>
+                    <column name="razorpay_signature" type="TEXT"/>
+                    <column name="gateway_response" type="JSONB"/>
+                    
+                    <!-- Receipt -->
+                    <column name="receipt_number" type="TEXT"/>
+                    <column name="receipt_url" type="TEXT"/>
+                    
+                    <!-- Offline Payment -->
+                    <column name="offline_verified_by" type="UUID" references="profiles(id)"/>
+                    <column name="offline_verification_note" type="TEXT"/>
+                    <column name="offline_verified_at" type="TIMESTAMPTZ"/>
+                    
+                    <!-- Refund Details -->
+                    <column name="refund_amount" type="DECIMAL(10,2)"/>
+                    <column name="refund_reason" type="TEXT"/>
+                    <column name="refund_id" type="TEXT"/>
+                    <column name="refund_processed_by" type="UUID" references="profiles(id)"/>
+                    <column name="refund_processed_at" type="TIMESTAMPTZ"/>
+                    
+                    <!-- Timestamps -->
+                    <column name="created_at" type="TIMESTAMPTZ" default="now()"/>
+                    <column name="updated_at" type="TIMESTAMPTZ" default="now()"/>
+                    <column name="completed_at" type="TIMESTAMPTZ"/>
+                </columns>
+                <constraints>
+                    <check name="valid_refund" condition="refund_amount IS NULL OR refund_amount <= total_amount"/>
+                </constraints>
+                <indexes>
+                    <index columns="user_id"/>
+                    <index columns="registration_id"/>
+                    <index columns="status"/>
+                    <index columns="razorpay_order_id" unique="true" where="razorpay_order_id IS NOT NULL"/>
+                    <index columns="razorpay_payment_id" unique="true" where="razorpay_payment_id IS NOT NULL"/>
+                    <index columns="receipt_number" unique="true" where="receipt_number IS NOT NULL"/>
+                </indexes>
+                <rls_policies>
+                    <policy name="Users can view own payments" action="SELECT" using="user_id = auth.uid()"/>
+                    <policy name="System can create payments" action="INSERT" check="user_id = auth.uid()"/>
+                    <policy name="Admins can view all payments" action="SELECT" using="is_admin()"/>
+                    <policy name="Admins can update payments" action="UPDATE" using="is_admin()"/>
+                </rls_policies>
+                <triggers>
+                    <trigger name="set_updated_at" event="BEFORE UPDATE" function="handle_updated_at()"/>
+                    <trigger name="generate_receipt_number" event="BEFORE INSERT" function="generate_receipt_number()"/>
+                    <trigger name="sync_registration_payment" event="AFTER INSERT OR UPDATE" function="sync_registration_payment_status()"/>
+                </triggers>
+            </table>
+
+            <!-- ========== 6. NOTIFICATIONS TABLE ========== -->
+            <table name="notifications" order="6">
+                <description>User notifications (in-app and email tracking)</description>
+                <columns>
+                    <column name="id" type="UUID" primary="true" default="gen_random_uuid()"/>
+                    <column name="recipient_id" type="UUID" references="profiles(id)" on_delete="CASCADE" required="true"/>
+                    <column name="type" type="TEXT" required="true" check="type IN ('registration', 'payment', 'announcement', 'reminder', 'waitlist', 'cancellation')"/>
+                    <column name="priority" type="TEXT" default="normal" check="priority IN ('low', 'normal', 'high', 'urgent')"/>
+                    <column name="title" type="TEXT" required="true"/>
+                    <column name="message" type="TEXT" required="true"/>
+                    <column name="action_url" type="TEXT"/>
+                    <column name="is_read" type="BOOLEAN" default="false"/>
+                    <column name="read_at" type="TIMESTAMPTZ"/>
+                    <column name="email_sent" type="BOOLEAN" default="false"/>
+                    <column name="email_sent_at" type="TIMESTAMPTZ"/>
+                    <column name="related_sport_id" type="UUID" references="sports(id)" on_delete="SET NULL"/>
+                    <column name="related_registration_id" type="UUID" references="registrations(id)" on_delete="SET NULL"/>
+                    <column name="metadata" type="JSONB"/>
+                    <column name="expires_at" type="TIMESTAMPTZ"/>
+                    <column name="created_at" type="TIMESTAMPTZ" default="now()"/>
+                </columns>
+                <indexes>
+                    <index columns="recipient_id, is_read"/>
+                    <index columns="recipient_id, created_at DESC"/>
+                    <index columns="type"/>
+                    <index columns="expires_at" where="expires_at IS NOT NULL"/>
+                </indexes>
+                <rls_policies>
+                    <policy name="Users can view own notifications" action="SELECT" using="recipient_id = auth.uid()"/>
+                    <policy name="Users can update own notifications" action="UPDATE" using="recipient_id = auth.uid()"/>
+                    <policy name="System can insert notifications" action="INSERT" check="true"/>
+                    <policy name="Admins can manage all notifications" action="ALL" using="is_admin()"/>
+                </rls_policies>
+            </table>
+
+            <!-- ========== 7. AUDIT LOGS TABLE ========== -->
+            <table name="audit_logs" order="7">
+                <description>Comprehensive audit trail for all important actions</description>
+                <columns>
+                    <column name="id" type="UUID" primary="true" default="gen_random_uuid()"/>
+                    <column name="user_id" type="UUID" references="profiles(id)"/>
+                    <column name="action" type="TEXT" required="true"/>
+                    <column name="entity_type" type="TEXT" required="true"/>
+                    <column name="entity_id" type="UUID"/>
+                    <column name="old_values" type="JSONB"/>
+                    <column name="new_values" type="JSONB"/>
+                    <column name="ip_address" type="INET"/>
+                    <column name="user_agent" type="TEXT"/>
+                    <column name="request_id" type="TEXT"/>
+                    <column name="created_at" type="TIMESTAMPTZ" default="now()"/>
+                </columns>
+                <indexes>
+                    <index columns="user_id"/>
+                    <index columns="entity_type, entity_id"/>
+                    <index columns="action"/>
+                    <index columns="created_at"/>
+                </indexes>
+                <rls_policies>
+                    <policy name="Admins can view audit logs" action="SELECT" using="is_admin()"/>
+                    <policy name="System can insert audit logs" action="INSERT" check="true"/>
+                </rls_policies>
+            </table>
+
+            <!-- ========== 8. COLLEGES TABLE (Optional - for dropdown/validation) ========== -->
+            <table name="colleges" order="8">
+                <description>Predefined list of colleges for consistent data</description>
+                <columns>
+                    <column name="id" type="UUID" primary="true" default="gen_random_uuid()"/>
+                    <column name="name" type="TEXT" required="true" unique="true"/>
+                    <column name="short_name" type="TEXT"/>
+                    <column name="city" type="TEXT"/>
+                    <column name="is_active" type="BOOLEAN" default="true"/>
+                    <column name="created_at" type="TIMESTAMPTZ" default="now()"/>
+                </columns>
+                <indexes>
+                    <index columns="name"/>
+                    <index columns="is_active"/>
+                </indexes>
+                <rls_policies>
+                    <policy name="Anyone can view active colleges" action="SELECT" using="is_active = true"/>
+                    <policy name="Admins can manage colleges" action="ALL" using="is_admin()"/>
+                </rls_policies>
+            </table>
+
+            <!-- ========== 9. SETTINGS TABLE (Key-Value Store) ========== -->
+            <table name="settings" order="9">
+                <description>System-wide configuration settings</description>
+                <columns>
+                    <column name="key" type="TEXT" primary="true"/>
+                    <column name="value" type="JSONB" required="true"/>
+                    <column name="description" type="TEXT"/>
+                    <column name="updated_by" type="UUID" references="profiles(id)"/>
+                    <column name="updated_at" type="TIMESTAMPTZ" default="now()"/>
+                </columns>
+                <rls_policies>
+                    <policy name="Anyone can view settings" action="SELECT" using="true"/>
+                    <policy name="Admins can update settings" action="UPDATE" using="is_admin()"/>
+                </rls_policies>
+            </table>
+        </tables>
+
+        <!-- ==================== DATABASE FUNCTIONS ==================== -->
+        <functions>
+            <!-- ===== UTILITY FUNCTIONS ===== -->
+            <function name="handle_updated_at">
+                <description>Automatically update updated_at timestamp</description>
+                <language>plpgsql</language>
+                <returns>trigger</returns>
+                <body>
+                    BEGIN
+                        NEW.updated_at = now();
+                        RETURN NEW;
+                    END;
+                </body>
+            </function>
+
+            <function name="is_admin">
+                <description>Check if current user is admin (cached for RLS performance)</description>
+                <language>sql</language>
+                <returns>boolean</returns>
+                <security>STABLE</security>
+                <body>
+                    SELECT EXISTS (
+                        SELECT 1 FROM profiles 
+                        WHERE id = auth.uid() AND role = 'admin'
+                    );
+                </body>
+            </function>
+
+            <function name="is_coordinator">
+                <description>Check if current user is coordinator or higher</description>
+                <language>sql</language>
+                <returns>boolean</returns>
+                <security>STABLE</security>
+                <body>
+                    SELECT EXISTS (
+                        SELECT 1 FROM profiles 
+                        WHERE id = auth.uid() AND role IN ('admin', 'coordinator')
+                    );
+                </body>
+            </function>
+
+            <!-- ===== USER MANAGEMENT FUNCTIONS ===== -->
+            <function name="handle_new_user">
+                <description>Create profile entry when new user signs up via auth</description>
+                <language>plpgsql</language>
+                <security>SECURITY DEFINER</security>
+                <returns>trigger</returns>
+                <body>
+                    BEGIN
+                        INSERT INTO public.profiles (id, email, name, phone, college)
+                        VALUES (
+                            NEW.id,
+                            COALESCE(NEW.email, ''),
+                            COALESCE(NEW.raw_user_meta_data->>'name', ''),
+                            COALESCE(NEW.raw_user_meta_data->>'phone', ''),
+                            COALESCE(NEW.raw_user_meta_data->>'college', '')
+                        );
+                        RETURN NEW;
+                    END;
+                </body>
+            </function>
+
+            <!-- ===== SPORT FUNCTIONS ===== -->
+            <function name="generate_sport_slug">
+                <description>Generate URL-friendly slug from sport name</description>
+                <language>plpgsql</language>
+                <returns>trigger</returns>
+                <body>
+                    DECLARE
+                        base_slug TEXT;
+                        final_slug TEXT;
+                        counter INTEGER := 0;
+                    BEGIN
+                        base_slug := lower(regexp_replace(NEW.name, '[^a-zA-Z0-9]+', '-', 'g'));
+                        base_slug := trim(both '-' from base_slug);
+                        final_slug := base_slug;
+                        
+                        WHILE EXISTS (SELECT 1 FROM sports WHERE slug = final_slug AND id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid)) LOOP
+                            counter := counter + 1;
+                            final_slug := base_slug || '-' || counter;
+                        END LOOP;
+                        
+                        NEW.slug := final_slug;
+                        RETURN NEW;
+                    END;
+                </body>
+            </function>
+
+            <function name="check_registration_capacity">
+                <description>Auto-close registration when capacity is reached</description>
+                <language>plpgsql</language>
+                <returns>trigger</returns>
+                <body>
+                    BEGIN
+                        IF NEW.max_participants IS NOT NULL AND NEW.current_participants >= NEW.max_participants THEN
+                            NEW.is_registration_open := false;
+                        END IF;
+                        RETURN NEW;
+                    END;
+                </body>
+            </function>
+
+            <function name="get_applicable_fees" params="sport_id UUID">
+                <description>Get current applicable fees (early bird or regular)</description>
+                <language>sql</language>
+                <returns>DECIMAL(10,2)</returns>
+                <body>
+                    SELECT CASE 
+                        WHEN early_bird_deadline IS NOT NULL AND now() < early_bird_deadline AND early_bird_fees IS NOT NULL
+                        THEN early_bird_fees
+                        ELSE fees
+                    END
+                    FROM sports WHERE id = sport_id;
+                </body>
+            </function>
+
+            <!-- ===== REGISTRATION FUNCTIONS ===== -->
+            <function name="generate_registration_number">
+                <description>Generate unique registration number</description>
+                <language>plpgsql</language>
+                <returns>trigger</returns>
+                <body>
+                    DECLARE
+                        sport_code TEXT;
+                        seq_num INTEGER;
+                    BEGIN
+                        SELECT upper(left(name, 3)) INTO sport_code FROM sports WHERE id = NEW.sport_id;
+                        SELECT COALESCE(MAX(CAST(right(registration_number, 4) AS INTEGER)), 0) + 1 
+                        INTO seq_num 
+                        FROM registrations 
+                        WHERE sport_id = NEW.sport_id;
+                        
+                        NEW.registration_number := 'REG-' || sport_code || '-' || lpad(seq_num::TEXT, 4, '0');
+                        RETURN NEW;
+                    END;
+                </body>
+            </function>
+
+            <function name="sync_sport_participant_count">
+                <description>Update current_participants count on sports table (only counts confirmed)</description>
+                <language>plpgsql</language>
+                <returns>trigger</returns>
+                <body>
+                    DECLARE
+                        target_sport_id UUID;
+                    BEGIN
+                        target_sport_id := COALESCE(NEW.sport_id, OLD.sport_id);
+                        
+                        UPDATE sports 
+                        SET current_participants = (
+                            SELECT COUNT(*) FROM registrations 
+                            WHERE sport_id = target_sport_id AND status = 'confirmed'
+                        )
+                        WHERE id = target_sport_id;
+                        
+                        RETURN COALESCE(NEW, OLD);
+                    END;
+                </body>
+            </function>
+
+            <function name="handle_registration_status_change">
+                <description>Handle side effects when registration status changes</description>
+                <language>plpgsql</language>
+                <returns>trigger</returns>
+                <body>
+                    BEGIN
+                        -- When a registration is cancelled, promote from waitlist
+                        IF OLD.status = 'confirmed' AND NEW.status IN ('cancelled', 'withdrawn') THEN
+                            PERFORM promote_from_waitlist(NEW.sport_id);
+                        END IF;
+                        
+                        -- Set confirmed_at timestamp
+                        IF OLD.status != 'confirmed' AND NEW.status = 'confirmed' THEN
+                            NEW.confirmed_at := now();
+                        END IF;
+                        
+                        -- Set cancelled_at timestamp  
+                        IF NEW.status IN ('cancelled', 'withdrawn') AND OLD.status NOT IN ('cancelled', 'withdrawn') THEN
+                            NEW.cancelled_at := now();
+                        END IF;
+                        
+                        RETURN NEW;
+                    END;
+                </body>
+            </function>
+
+            <function name="can_register_for_sport" params="p_sport_id UUID, p_user_id UUID">
+                <description>Check if user can register for a sport (validation function)</description>
+                <language>plpgsql</language>
+                <returns>TABLE(can_register BOOLEAN, reason TEXT, waitlist_available BOOLEAN)</returns>
+                <body>
+                    DECLARE
+                        v_sport RECORD;
+                        v_existing_reg RECORD;
+                    BEGIN
+                        -- Get sport details
+                        SELECT * INTO v_sport FROM sports WHERE id = p_sport_id;
+                        
+                        IF NOT FOUND THEN
+                            RETURN QUERY SELECT false, 'Sport not found', false;
+                            RETURN;
+                        END IF;
+                        
+                        IF v_sport.is_archived THEN
+                            RETURN QUERY SELECT false, 'Sport is archived', false;
+                            RETURN;
+                        END IF;
+                        
+                        IF NOT v_sport.is_registration_open THEN
+                            RETURN QUERY SELECT false, 'Registration is closed', false;
+                            RETURN;
+                        END IF;
+                        
+                        IF now() > v_sport.registration_deadline THEN
+                            RETURN QUERY SELECT false, 'Registration deadline passed', false;
+                            RETURN;
+                        END IF;
+                        
+                        IF now() < v_sport.registration_start THEN
+                            RETURN QUERY SELECT false, 'Registration not yet started', false;
+                            RETURN;
+                        END IF;
+                        
+                        -- Check existing registration
+                        SELECT * INTO v_existing_reg FROM registrations 
+                        WHERE participant_id = p_user_id AND sport_id = p_sport_id 
+                        AND status NOT IN ('cancelled', 'withdrawn');
+                        
+                        IF FOUND THEN
+                            RETURN QUERY SELECT false, 'Already registered for this sport', false;
+                            RETURN;
+                        END IF;
+                        
+                        -- Check capacity
+                        IF v_sport.max_participants IS NOT NULL THEN
+                            IF v_sport.current_participants >= v_sport.max_participants THEN
+                                IF v_sport.waitlist_enabled THEN
+                                    RETURN QUERY SELECT true, 'Waitlist available', true;
+                                ELSE
+                                    RETURN QUERY SELECT false, 'Sport is full', false;
+                                END IF;
+                                RETURN;
+                            END IF;
+                        END IF;
+                        
+                        RETURN QUERY SELECT true, 'OK', false;
+                    END;
+                </body>
+            </function>
+
+            <function name="promote_from_waitlist" params="p_sport_id UUID">
+                <description>Promote next person from waitlist when spot opens</description>
+                <language>plpgsql</language>
+                <returns>UUID</returns>
+                <security>SECURITY DEFINER</security>
+                <body>
+                    DECLARE
+                        v_next_reg RECORD;
+                    BEGIN
+                        SELECT * INTO v_next_reg FROM registrations
+                        WHERE sport_id = p_sport_id AND status = 'waitlist'
+                        ORDER BY waitlist_position ASC
+                        LIMIT 1
+                        FOR UPDATE SKIP LOCKED;
+                        
+                        IF FOUND THEN
+                            UPDATE registrations 
+                            SET status = 'payment_pending', waitlist_position = NULL
+                            WHERE id = v_next_reg.id;
+                            
+                            -- Create notification
+                            INSERT INTO notifications (recipient_id, type, priority, title, message, related_sport_id, related_registration_id)
+                            VALUES (
+                                v_next_reg.participant_id,
+                                'waitlist',
+                                'high',
+                                'Spot Available!',
+                                'A spot has opened up for your waitlisted registration. Please complete payment within 24 hours.',
+                                p_sport_id,
+                                v_next_reg.id
+                            );
+                            
+                            RETURN v_next_reg.id;
+                        END IF;
+                        
+                        RETURN NULL;
+                    END;
+                </body>
+            </function>
+
+            <!-- ===== PAYMENT FUNCTIONS ===== -->
+            <function name="generate_receipt_number">
+                <description>Generate unique receipt number</description>
+                <language>plpgsql</language>
+                <returns>trigger</returns>
+                <body>
+                    DECLARE
+                        year_suffix TEXT;
+                        seq_num INTEGER;
+                    BEGIN
+                        IF NEW.status = 'success' AND NEW.receipt_number IS NULL THEN
+                            year_suffix := to_char(now(), 'YY');
+                            SELECT COALESCE(MAX(CAST(right(receipt_number, 6) AS INTEGER)), 0) + 1 
+                            INTO seq_num 
+                            FROM payments 
+                            WHERE receipt_number LIKE 'RCP-' || year_suffix || '-%';
+                            
+                            NEW.receipt_number := 'RCP-' || year_suffix || '-' || lpad(seq_num::TEXT, 6, '0');
+                        END IF;
+                        RETURN NEW;
+                    END;
+                </body>
+            </function>
+
+            <function name="sync_registration_payment_status">
+                <description>Sync payment status to registration when payment is updated</description>
+                <language>plpgsql</language>
+                <returns>trigger</returns>
+                <body>
+                    BEGIN
+                        IF NEW.status = 'success' THEN
+                            UPDATE registrations 
+                            SET payment_status = 'completed',
+                                status = 'confirmed',
+                                amount_paid = NEW.total_amount
+                            WHERE id = NEW.registration_id;
+                            NEW.completed_at := now();
+                        ELSIF NEW.status = 'failed' THEN
+                            UPDATE registrations 
+                            SET payment_status = 'failed'
+                            WHERE id = NEW.registration_id;
+                        ELSIF NEW.status IN ('refunded', 'partially_refunded') THEN
+                            UPDATE registrations 
+                            SET payment_status = 'refunded',
+                                status = 'cancelled'
+                            WHERE id = NEW.registration_id;
+                        END IF;
+                        
+                        RETURN NEW;
+                    END;
+                </body>
+            </function>
+
+            <!-- ===== ANALYTICS FUNCTIONS ===== -->
+            <function name="get_dashboard_stats">
+                <description>Get admin dashboard statistics</description>
+                <language>plpgsql</language>
+                <returns>JSON</returns>
+                <security>SECURITY DEFINER</security>
+                <body>
+                    BEGIN
+                        IF NOT is_admin() THEN
+                            RAISE EXCEPTION 'Unauthorized';
+                        END IF;
+                        
+                        RETURN json_build_object(
+                            'total_registrations', (SELECT COUNT(*) FROM registrations WHERE status != 'cancelled'),
+                            'confirmed_registrations', (SELECT COUNT(*) FROM registrations WHERE status = 'confirmed'),
+                            'pending_payments', (SELECT COUNT(*) FROM registrations WHERE status = 'payment_pending'),
+                            'waitlisted', (SELECT COUNT(*) FROM registrations WHERE status = 'waitlist'),
+                            'total_revenue', (SELECT COALESCE(SUM(total_amount), 0) FROM payments WHERE status = 'success'),
+                            'todays_revenue', (SELECT COALESCE(SUM(total_amount), 0) FROM payments WHERE status = 'success' AND created_at::date = CURRENT_DATE),
+                            'active_sports', (SELECT COUNT(*) FROM sports WHERE is_registration_open = true AND is_archived = false),
+                            'total_participants', (SELECT COUNT(DISTINCT participant_id) FROM registrations WHERE status = 'confirmed'),
+                            'colleges_count', (SELECT COUNT(DISTINCT college) FROM profiles WHERE id IN (SELECT participant_id FROM registrations WHERE status = 'confirmed'))
+                        );
+                    END;
+                </body>
+            </function>
+
+            <function name="get_sport_analytics" params="p_sport_id UUID">
+                <description>Get detailed analytics for a specific sport</description>
+                <language>plpgsql</language>
+                <returns>JSON</returns>
+                <body>
+                    BEGIN
+                        RETURN json_build_object(
+                            'total_registrations', (SELECT COUNT(*) FROM registrations WHERE sport_id = p_sport_id AND status != 'cancelled'),
+                            'confirmed', (SELECT COUNT(*) FROM registrations WHERE sport_id = p_sport_id AND status = 'confirmed'),
+                            'pending', (SELECT COUNT(*) FROM registrations WHERE sport_id = p_sport_id AND status IN ('pending', 'payment_pending')),
+                            'waitlist', (SELECT COUNT(*) FROM registrations WHERE sport_id = p_sport_id AND status = 'waitlist'),
+                            'cancelled', (SELECT COUNT(*) FROM registrations WHERE sport_id = p_sport_id AND status IN ('cancelled', 'withdrawn')),
+                            'revenue', (SELECT COALESCE(SUM(p.total_amount), 0) FROM payments p JOIN registrations r ON p.registration_id = r.id WHERE r.sport_id = p_sport_id AND p.status = 'success'),
+                            'colleges', (SELECT json_agg(DISTINCT pr.college) FROM registrations r JOIN profiles pr ON r.participant_id = pr.id WHERE r.sport_id = p_sport_id AND r.status = 'confirmed')
+                        );
+                    END;
+                </body>
+            </function>
+        </functions>
+
+        <!-- ==================== SCHEDULED JOBS (pg_cron) ==================== -->
+        <scheduled_jobs>
+            <job name="auto_close_expired_registrations">
+                <description>Close registrations after deadline passes</description>
+                <schedule>*/15 * * * *</schedule>
+                <query>
+                    UPDATE sports 
+                    SET is_registration_open = false 
+                    WHERE is_registration_open = true 
+                    AND registration_deadline < now();
+                </query>
+            </job>
+
+            <job name="auto_open_registrations">
+                <description>Open registrations when start time arrives</description>
+                <schedule>*/15 * * * *</schedule>
+                <query>
+                    UPDATE sports 
+                    SET is_registration_open = true 
+                    WHERE is_registration_open = false 
+                    AND registration_start <= now() 
+                    AND registration_deadline > now()
+                    AND is_archived = false
+                    AND (max_participants IS NULL OR current_participants < max_participants);
+                </query>
+            </job>
+
+            <job name="expire_pending_payments">
+                <description>Expire registrations with pending payments after 24 hours</description>
+                <schedule>0 * * * *</schedule>
+                <query>
+                    UPDATE registrations 
+                    SET status = 'cancelled', 
+                        withdrawal_reason = 'Payment timeout (24 hours)'
+                    WHERE status = 'payment_pending' 
+                    AND updated_at < now() - interval '24 hours';
+                </query>
+            </job>
+
+            <job name="cleanup_expired_notifications">
+                <description>Delete expired notifications</description>
+                <schedule>0 0 * * *</schedule>
+                <query>
+                    DELETE FROM notifications 
+                    WHERE expires_at IS NOT NULL AND expires_at < now();
+                </query>
+            </job>
+
+            <job name="send_registration_reminders">
+                <description>Send reminders for sports starting soon</description>
+                <schedule>0 9 * * *</schedule>
+                <query>
+                    INSERT INTO notifications (recipient_id, type, priority, title, message, related_sport_id, related_registration_id)
+                    SELECT 
+                        r.participant_id,
+                        'reminder',
+                        'high',
+                        'Event Starting Soon!',
+                        'Your registered event ' || s.name || ' starts tomorrow at ' || to_char(s.schedule_start, 'HH24:MI'),
+                        s.id,
+                        r.id
+                    FROM registrations r
+                    JOIN sports s ON r.sport_id = s.id
+                    WHERE r.status = 'confirmed'
+                    AND s.schedule_start::date = CURRENT_DATE + 1;
+                </query>
+            </job>
+        </scheduled_jobs>
+    </database>
+
+    <!-- ==================== STORAGE BUCKETS ==================== -->
+    <storage>
+        <buckets>
+            <bucket name="sport-images" public="true">
+                <description>Public bucket for sport event images</description>
+                <allowed_mime_types>image/jpeg,image/png,image/webp</allowed_mime_types>
+                <max_file_size>5MB</max_file_size>
+                <policies>
+                    <policy name="Anyone can view sport images" action="SELECT" using="true"/>
+                    <policy name="Admins can upload sport images" action="INSERT" check="is_admin()"/>
+                    <policy name="Admins can update sport images" action="UPDATE" using="is_admin()"/>
+                    <policy name="Admins can delete sport images" action="DELETE" using="is_admin()"/>
+                </policies>
+            </bucket>
+            
+            <bucket name="avatars" public="true">
+                <description>User avatar images</description>
+                <allowed_mime_types>image/jpeg,image/png,image/webp</allowed_mime_types>
+                <max_file_size>2MB</max_file_size>
+                <policies>
+                    <policy name="Anyone can view avatars" action="SELECT" using="true"/>
+                    <policy name="Users can upload own avatar" action="INSERT" check="auth.uid()::text = (storage.foldername(name))[1]"/>
+                    <policy name="Users can update own avatar" action="UPDATE" using="auth.uid()::text = (storage.foldername(name))[1]"/>
+                    <policy name="Users can delete own avatar" action="DELETE" using="auth.uid()::text = (storage.foldername(name))[1]"/>
+                </policies>
+            </bucket>
+            
+            <bucket name="receipts" public="false">
+                <description>Private bucket for payment receipts</description>
+                <allowed_mime_types>application/pdf</allowed_mime_types>
+                <max_file_size>1MB</max_file_size>
+                <policies>
+                    <policy name="Users can view own receipts" action="SELECT" using="auth.uid()::text = (storage.foldername(name))[1]"/>
+                    <policy name="System can upload receipts" action="INSERT" check="true"/>
+                    <policy name="Admins can view all receipts" action="SELECT" using="is_admin()"/>
+                </policies>
+            </bucket>
+        </buckets>
+    </storage>
+
+    <!-- ==================== EDGE FUNCTIONS (API) ==================== -->
+    <!-- Organized by user journey flow -->
+    
+    <edge_functions>
+        <!-- ===== 1. AUTHENTICATION FLOW ===== -->
+        <function_group name="auth" description="User authentication and profile management">
+            <function name="signup">
+                <description>User signup with profile creation</description>
+                <method>POST</method>
+                <path>/auth/signup</path>
+                <access>public</access>
+                <request>
+                    <body>
+                        <field name="email" type="string" required="true" validation="email"/>
+                        <field name="password" type="string" required="true" validation="min:8"/>
+                        <field name="name" type="string" required="true" validation="min:2,max:100"/>
+                        <field name="phone" type="string" required="true" validation="phone_in"/>
+                        <field name="college" type="string" required="true"/>
+                    </body>
+                </request>
+                <response status="201">
+                    <field name="user" type="object"/>
+                    <field name="session" type="object"/>
+                    <field name="profile" type="object"/>
+                </response>
+                <errors>
+                    <error code="400" message="Validation failed"/>
+                    <error code="409" message="Email already registered"/>
+                    <error code="500" message="Failed to create account"/>
+                </errors>
+                <implementation>
+                    1. Validate all input fields
+                    2. Call supabase.auth.signUp() with user_metadata
+                    3. The handle_new_user trigger auto-creates profile
+                    4. Return user, session, and profile data
+                </implementation>
+            </function>
+
+            <function name="update-profile">
+                <description>Update user profile</description>
+                <method>PATCH</method>
+                <path>/auth/profile</path>
+                <access>authenticated</access>
+                <request>
+                    <body>
+                        <field name="name" type="string"/>
+                        <field name="phone" type="string"/>
+                        <field name="college" type="string"/>
+                        <field name="avatar_url" type="string"/>
+                    </body>
+                </request>
+                <implementation>
+                    1. Get current user from JWT
+                    2. Update profiles table (RLS handles authorization)
+                    3. Create audit log entry
+                </implementation>
+            </function>
+
+            <function name="get-profile">
+                <description>Get current user profile with registrations summary</description>
+                <method>GET</method>
+                <path>/auth/profile</path>
+                <access>authenticated</access>
+                <response status="200">
+                    <field name="profile" type="object"/>
+                    <field name="registrations_count" type="number"/>
+                    <field name="unread_notifications" type="number"/>
+                </response>
+            </function>
+        </function_group>
+
+        <!-- ===== 2. SPORTS DISCOVERY FLOW ===== -->
+        <function_group name="sports" description="Sports listing and management">
+            <function name="list-sports">
+                <description>Get all available sports with filters</description>
+                <method>GET</method>
+                <path>/sports</path>
+                <access>public</access>
+                <query_params>
+                    <param name="category" type="string"/>
+                    <param name="is_open" type="boolean"/>
+                    <param name="search" type="string"/>
+                    <param name="sort" type="string" default="registration_deadline"/>
+                    <param name="page" type="number" default="1"/>
+                    <param name="limit" type="number" default="20"/>
+                </query_params>
+                <response status="200">
+                    <field name="sports" type="array"/>
+                    <field name="total" type="number"/>
+                    <field name="page" type="number"/>
+                    <field name="has_more" type="boolean"/>
+                </response>
+                <implementation>
+                    Direct Supabase query with RLS (is_archived = false filter)
+                    Include current_participants and max_participants for capacity display
+                </implementation>
+            </function>
+
+            <function name="get-sport">
+                <description>Get sport details by ID or slug</description>
+                <method>GET</method>
+                <path>/sports/:identifier</path>
+                <access>public</access>
+                <response status="200">
+                    <field name="sport" type="object"/>
+                    <field name="can_register" type="boolean"/>
+                    <field name="applicable_fees" type="number"/>
+                    <field name="spots_remaining" type="number"/>
+                </response>
+                <implementation>
+                    1. Fetch sport by ID or slug
+                    2. If authenticated, check can_register_for_sport()
+                    3. Calculate applicable fees (early bird vs regular)
+                </implementation>
+            </function>
+
+            <function name="create-sport">
+                <description>Create a new sport event (admin only)</description>
+                <method>POST</method>
+                <path>/sports</path>
+                <access>admin</access>
+                <request>
+                    <body>
+                        <field name="name" type="string" required="true"/>
+                        <field name="category" type="string" required="true" enum="indoor,outdoor,esports,athletics"/>
+                        <field name="description" type="string"/>
+                        <field name="rules" type="string"/>
+                        <field name="is_team_event" type="boolean" default="false"/>
+                        <field name="team_size_min" type="number" default="1"/>
+                        <field name="team_size_max" type="number" default="1"/>
+                        <field name="fees" type="number" required="true"/>
+                        <field name="early_bird_fees" type="number"/>
+                        <field name="early_bird_deadline" type="datetime"/>
+                        <field name="registration_start" type="datetime" required="true"/>
+                        <field name="registration_deadline" type="datetime" required="true"/>
+                        <field name="schedule_start" type="datetime"/>
+                        <field name="schedule_end" type="datetime"/>
+                        <field name="venue" type="string"/>
+                        <field name="max_participants" type="number"/>
+                        <field name="waitlist_enabled" type="boolean" default="true"/>
+                    </body>
+                </request>
+                <implementation>
+                    1. Validate admin role
+                    2. Validate date ranges (deadline after start, etc.)
+                    3. Insert into sports table (slug auto-generated)
+                    4. Create audit log entry
+                </implementation>
+            </function>
+
+            <function name="update-sport">
+                <description>Update sport details (admin only)</description>
+                <method>PATCH</method>
+                <path>/sports/:id</path>
+                <access>admin</access>
+                <implementation>
+                    1. Validate admin role
+                    2. Update allowed fields
+                    3. Create audit log with old and new values
+                </implementation>
+            </function>
+
+            <function name="toggle-registration">
+                <description>Open or close registration for a sport</description>
+                <method>POST</method>
+                <path>/sports/:id/toggle-registration</path>
+                <access>admin</access>
+                <implementation>
+                    1. Toggle is_registration_open flag
+                    2. If opening, validate deadline not passed
+                    3. If closing, optionally send notifications to waitlisted users
+                    4. Create audit log
+                </implementation>
+            </function>
+
+            <function name="duplicate-sport">
+                <description>Duplicate a sport for quick creation</description>
+                <method>POST</method>
+                <path>/sports/:id/duplicate</path>
+                <access>admin</access>
+                <implementation>
+                    1. Copy sport data with new UUID
+                    2. Reset participant counts
+                    3. Set is_registration_open = false
+                    4. Generate new slug with suffix
+                </implementation>
+            </function>
+
+            <function name="archive-sport">
+                <description>Archive a sport (soft delete)</description>
+                <method>POST</method>
+                <path>/sports/:id/archive</path>
+                <access>admin</access>
+                <implementation>
+                    1. Set is_archived = true
+                    2. Set is_registration_open = false
+                    3. Notify registered participants if any
+                </implementation>
+            </function>
+        </function_group>
+
+        <!-- ===== 3. REGISTRATION FLOW ===== -->
+        <function_group name="registrations" description="Registration management">
+            <function name="check-eligibility">
+                <description>Check if user can register for a sport</description>
+                <method>GET</method>
+                <path>/registrations/check/:sport_id</path>
+                <access>authenticated</access>
+                <response status="200">
+                    <field name="can_register" type="boolean"/>
+                    <field name="reason" type="string"/>
+                    <field name="waitlist_available" type="boolean"/>
+                    <field name="applicable_fees" type="number"/>
+                    <field name="spots_remaining" type="number"/>
+                </response>
+                <implementation>
+                    Calls can_register_for_sport() database function
+                </implementation>
+            </function>
+
+            <function name="register">
+                <description>Register for a sport event</description>
+                <method>POST</method>
+                <path>/registrations</path>
+                <access>authenticated</access>
+                <request>
+                    <body>
+                        <field name="sport_id" type="uuid" required="true"/>
+                        <field name="is_team" type="boolean" default="false"/>
+                        <field name="team_name" type="string" required_if="is_team=true"/>
+                        <field name="team_members" type="array" required_if="is_team=true">
+                            <item>
+                                <field name="name" type="string" required="true"/>
+                                <field name="email" type="string"/>
+                                <field name="phone" type="string"/>
+                                <field name="is_captain" type="boolean" default="false"/>
+                            </item>
+                        </field>
+                    </body>
+                </request>
+                <response status="201">
+                    <field name="registration" type="object"/>
+                    <field name="status" type="string" description="'payment_pending' or 'waitlist'"/>
+                    <field name="amount" type="number"/>
+                    <field name="waitlist_position" type="number" nullable="true"/>
+                </response>
+                <errors>
+                    <error code="400" message="Validation failed"/>
+                    <error code="403" message="Cannot register (see reason)"/>
+                    <error code="409" message="Already registered"/>
+                </errors>
+                <implementation>
+                    1. Validate sport exists and is open
+                    2. Call can_register_for_sport() for eligibility
+                    3. Begin transaction:
+                       a. Insert registration with appropriate status
+                       b. If waitlist, calculate position
+                       c. If team event, validate team size and insert members
+                    4. Create notification for user
+                    5. Return registration with next steps
+                </implementation>
+            </function>
+
+            <function name="get-my-registrations">
+                <description>Get current user's registrations</description>
+                <method>GET</method>
+                <path>/registrations/me</path>
+                <access>authenticated</access>
+                <query_params>
+                    <param name="status" type="string"/>
+                    <param name="include_past" type="boolean" default="false"/>
+                </query_params>
+                <response status="200">
+                    <field name="registrations" type="array"/>
+                </response>
+                <implementation>
+                    Query registrations with sport details joined
+                    Include team members if team event
+                </implementation>
+            </function>
+
+            <function name="get-registration">
+                <description>Get registration details</description>
+                <method>GET</method>
+                <path>/registrations/:id</path>
+                <access>authenticated</access>
+                <response status="200">
+                    <field name="registration" type="object"/>
+                    <field name="sport" type="object"/>
+                    <field name="team_members" type="array"/>
+                    <field name="payment" type="object"/>
+                </response>
+            </function>
+
+            <function name="update-team-members">
+                <description>Update team members (before payment)</description>
+                <method>PATCH</method>
+                <path>/registrations/:id/team</path>
+                <access>authenticated</access>
+                <request>
+                    <body>
+                        <field name="team_name" type="string"/>
+                        <field name="team_members" type="array"/>
+                    </body>
+                </request>
+                <implementation>
+                    1. Verify registration belongs to user
+                    2. Verify status is still pending/payment_pending
+                    3. Validate team size constraints
+                    4. Delete old members and insert new
+                </implementation>
+            </function>
+
+            <function name="cancel-registration">
+                <description>Cancel/withdraw from registration</description>
+                <method>POST</method>
+                <path>/registrations/:id/cancel</path>
+                <access>authenticated</access>
+                <request>
+                    <body>
+                        <field name="reason" type="string"/>
+                    </body>
+                </request>
+                <implementation>
+                    1. Verify ownership or admin
+                    2. Update status to cancelled/withdrawn
+                    3. If payment was made, initiate refund (separate flow)
+                    4. Trigger waitlist promotion
+                    5. Create notification
+                </implementation>
+            </function>
+
+            <function name="admin-list-registrations">
+                <description>List all registrations with filters (admin)</description>
+                <method>GET</method>
+                <path>/admin/registrations</path>
+                <access>admin</access>
+                <query_params>
+                    <param name="sport_id" type="uuid"/>
+                    <param name="status" type="string"/>
+                    <param name="payment_status" type="string"/>
+                    <param name="college" type="string"/>
+                    <param name="search" type="string"/>
+                    <param name="date_from" type="date"/>
+                    <param name="date_to" type="date"/>
+                    <param name="page" type="number"/>
+                    <param name="limit" type="number"/>
+                </query_params>
+            </function>
+
+            <function name="admin-update-registration">
+                <description>Admin update registration status</description>
+                <method>PATCH</method>
+                <path>/admin/registrations/:id</path>
+                <access>admin</access>
+                <request>
+                    <body>
+                        <field name="status" type="string"/>
+                        <field name="notes" type="string"/>
+                    </body>
+                </request>
+                <implementation>
+                    Update with audit log
+                </implementation>
+            </function>
+
+            <function name="export-registrations">
+                <description>Export registrations to CSV</description>
+                <method>GET</method>
+                <path>/admin/registrations/export</path>
+                <access>admin</access>
+                <query_params>
+                    <param name="sport_id" type="uuid"/>
+                    <param name="status" type="string"/>
+                    <param name="format" type="string" default="csv" enum="csv,xlsx"/>
+                </query_params>
+                <implementation>
+                    Generate file and return download URL (signed for 1 hour)
+                </implementation>
+            </function>
+        </function_group>
+
+        <!-- ===== 4. PAYMENT FLOW ===== -->
+        <function_group name="payments" description="Payment processing">
+            <function name="create-order">
+                <description>Create Razorpay order for payment</description>
+                <method>POST</method>
+                <path>/payments/create-order</path>
+                <access>authenticated</access>
+                <request>
+                    <body>
+                        <field name="registration_id" type="uuid" required="true"/>
+                    </body>
+                </request>
+                <response status="200">
+                    <field name="order_id" type="string"/>
+                    <field name="amount" type="number" description="Amount in paise"/>
+                    <field name="currency" type="string"/>
+                    <field name="key_id" type="string"/>
+                    <field name="registration" type="object"/>
+                    <field name="prefill" type="object" description="User details for checkout"/>
+                </response>
+                <errors>
+                    <error code="400" message="Registration not found or not eligible"/>
+                    <error code="409" message="Payment already initiated"/>
+                </errors>
+                <implementation>
+                    1. Verify registration belongs to user and status is payment_pending
+                    2. Get applicable fees from sport
+                    3. Create Razorpay order via API
+                    4. Insert payment record with order_id
+                    5. Update registration status if needed
+                    6. Return order details for frontend checkout
+                </implementation>
+            </function>
+
+            <function name="verify-payment">
+                <description>Verify Razorpay payment after checkout</description>
+                <method>POST</method>
+                <path>/payments/verify</path>
+                <access>authenticated</access>
+                <request>
+                    <body>
+                        <field name="razorpay_order_id" type="string" required="true"/>
+                        <field name="razorpay_payment_id" type="string" required="true"/>
+                        <field name="razorpay_signature" type="string" required="true"/>
+                    </body>
+                </request>
+                <response status="200">
+                    <field name="success" type="boolean"/>
+                    <field name="registration" type="object"/>
+                    <field name="payment" type="object"/>
+                    <field name="receipt_url" type="string"/>
+                </response>
+                <implementation>
+                    1. Verify signature using HMAC SHA256:
+                       generated_signature = HMAC(razorpay_order_id + "|" + razorpay_payment_id, secret)
+                    2. If valid:
+                       a. Update payment status to success
+                       b. Registration status auto-updates via trigger
+                       c. Generate receipt PDF
+                       d. Send confirmation email
+                       e. Create notification
+                    3. If invalid:
+                       a. Update payment status to failed
+                       b. Log security event
+                </implementation>
+            </function>
+
+            <function name="razorpay-webhook">
+                <description>Handle Razorpay webhook events</description>
+                <method>POST</method>
+                <path>/payments/webhook</path>
+                <access>public</access>
+                <headers>
+                    <header name="X-Razorpay-Signature" required="true"/>
+                </headers>
+                <implementation>
+                    1. Verify webhook signature
+                    2. Handle events:
+                       - payment.captured: Confirm payment (backup for verify)
+                       - payment.failed: Mark as failed
+                       - refund.created: Update refund status
+                       - refund.processed: Complete refund
+                    3. Idempotent processing (check if already processed)
+                    4. Create audit log for all events
+                </implementation>
+            </function>
+
+            <function name="verify-offline-payment">
+                <description>Mark offline payment as verified (admin)</description>
+                <method>POST</method>
+                <path>/admin/payments/verify-offline</path>
+                <access>admin</access>
+                <request>
+                    <body>
+                        <field name="registration_id" type="uuid" required="true"/>
+                        <field name="amount" type="number" required="true"/>
+                        <field name="verification_note" type="string"/>
+                    </body>
+                </request>
+                <implementation>
+                    1. Create payment record with method='offline'
+                    2. Set offline_verified_by, offline_verified_at
+                    3. Update registration to confirmed
+                    4. Create audit log
+                    5. Send confirmation to user
+                </implementation>
+            </function>
+
+            <function name="process-refund">
+                <description>Process payment refund (admin)</description>
+                <method>POST</method>
+                <path>/admin/payments/:id/refund</path>
+                <access>admin</access>
+                <request>
+                    <body>
+                        <field name="amount" type="number" required="true"/>
+                        <field name="reason" type="string" required="true"/>
+                    </body>
+                </request>
+                <implementation>
+                    1. Validate refund amount <= paid amount
+                    2. If online payment: Initiate Razorpay refund
+                    3. If offline: Just update status
+                    4. Update payment record
+                    5. Create notification for user
+                    6. Create audit log
+                </implementation>
+            </function>
+
+            <function name="get-my-payments">
+                <description>Get user's payment history</description>
+                <method>GET</method>
+                <path>/payments/me</path>
+                <access>authenticated</access>
+            </function>
+
+            <function name="get-receipt">
+                <description>Get/generate payment receipt</description>
+                <method>GET</method>
+                <path>/payments/:id/receipt</path>
+                <access>authenticated</access>
+                <implementation>
+                    1. Verify payment belongs to user or user is admin
+                    2. If receipt_url exists, return signed URL
+                    3. Else generate PDF, upload, save URL, return
+                </implementation>
+            </function>
+        </function_group>
+
+        <!-- ===== 5. NOTIFICATIONS FLOW ===== -->
+        <function_group name="notifications" description="User notifications">
+            <function name="get-notifications">
+                <description>Get user notifications</description>
+                <method>GET</method>
+                <path>/notifications</path>
+                <access>authenticated</access>
+                <query_params>
+                    <param name="unread_only" type="boolean" default="false"/>
+                    <param name="limit" type="number" default="20"/>
+                    <param name="cursor" type="string"/>
+                </query_params>
+            </function>
+
+            <function name="mark-read">
+                <description>Mark notification(s) as read</description>
+                <method>POST</method>
+                <path>/notifications/mark-read</path>
+                <access>authenticated</access>
+                <request>
+                    <body>
+                        <field name="notification_ids" type="array" description="If empty, marks all as read"/>
+                    </body>
+                </request>
+            </function>
+
+            <function name="get-unread-count">
+                <description>Get unread notification count</description>
+                <method>GET</method>
+                <path>/notifications/unread-count</path>
+                <access>authenticated</access>
+            </function>
+
+            <function name="broadcast">
+                <description>Send broadcast notification (admin)</description>
+                <method>POST</method>
+                <path>/admin/notifications/broadcast</path>
+                <access>admin</access>
+                <request>
+                    <body>
+                        <field name="title" type="string" required="true"/>
+                        <field name="message" type="string" required="true"/>
+                        <field name="priority" type="string" default="normal"/>
+                        <field name="target" type="object">
+                            <field name="type" type="string" enum="all,sport,college"/>
+                            <field name="value" type="string"/>
+                        </field>
+                        <field name="send_email" type="boolean" default="false"/>
+                    </body>
+                </request>
+                <implementation>
+                    1. Build recipient list based on target
+                    2. Batch insert notifications
+                    3. If send_email, queue emails via Resend
+                    4. Use Supabase Realtime for instant delivery
+                </implementation>
+            </function>
+
+            <function name="send-email">
+                <description>Send transactional email (internal)</description>
+                <method>POST</method>
+                <path>/internal/email</path>
+                <access>internal</access>
+                <request>
+                    <body>
+                        <field name="to" type="string" required="true"/>
+                        <field name="template" type="string" required="true" enum="welcome,payment_confirmation,registration_confirmation,reminder,cancellation"/>
+                        <field name="data" type="object"/>
+                    </body>
+                </request>
+            </function>
+        </function_group>
+
+        <!-- ===== 6. ANALYTICS FLOW ===== -->
+        <function_group name="analytics" description="Dashboard and analytics (admin)">
+            <function name="dashboard">
+                <description>Get admin dashboard overview</description>
+                <method>GET</method>
+                <path>/admin/analytics/dashboard</path>
+                <access>admin</access>
+                <response status="200">
+                    <field name="stats" type="object">
+                        <field name="total_registrations" type="number"/>
+                        <field name="confirmed_registrations" type="number"/>
+                        <field name="pending_payments" type="number"/>
+                        <field name="waitlisted" type="number"/>
+                        <field name="total_revenue" type="number"/>
+                        <field name="todays_revenue" type="number"/>
+                        <field name="active_sports" type="number"/>
+                        <field name="total_participants" type="number"/>
+                        <field name="colleges_count" type="number"/>
+                    </field>
+                    <field name="recent_registrations" type="array"/>
+                    <field name="recent_payments" type="array"/>
+                </response>
+            </function>
+
+            <function name="sports-analytics">
+                <description>Get sport-wise analytics</description>
+                <method>GET</method>
+                <path>/admin/analytics/sports</path>
+                <access>admin</access>
+            </function>
+
+            <function name="college-analytics">
+                <description>Get college-wise participation</description>
+                <method>GET</method>
+                <path>/admin/analytics/colleges</path>
+                <access>admin</access>
+            </function>
+
+            <function name="revenue-analytics">
+                <description>Get revenue breakdown</description>
+                <method>GET</method>
+                <path>/admin/analytics/revenue</path>
+                <access>admin</access>
+                <query_params>
+                    <param name="period" type="string" default="daily" enum="daily,weekly,monthly"/>
+                    <param name="from" type="date"/>
+                    <param name="to" type="date"/>
+                </query_params>
+            </function>
+
+            <function name="trends">
+                <description>Get registration trends</description>
+                <method>GET</method>
+                <path>/admin/analytics/trends</path>
+                <access>admin</access>
+            </function>
+        </function_group>
+
+        <!-- ===== 7. ADMIN UTILITIES ===== -->
+        <function_group name="admin" description="Admin utility functions">
+            <function name="get-audit-logs">
+                <description>Get audit logs</description>
+                <method>GET</method>
+                <path>/admin/audit-logs</path>
+                <access>admin</access>
+                <query_params>
+                    <param name="user_id" type="uuid"/>
+                    <param name="entity_type" type="string"/>
+                    <param name="action" type="string"/>
+                    <param name="from" type="datetime"/>
+                    <param name="to" type="datetime"/>
+                    <param name="page" type="number"/>
+                </query_params>
+            </function>
+
+            <function name="manage-colleges">
+                <description>CRUD for colleges list</description>
+                <method>GET,POST,PATCH,DELETE</method>
+                <path>/admin/colleges</path>
+                <access>admin</access>
+            </function>
+
+            <function name="get-settings">
+                <description>Get system settings</description>
+                <method>GET</method>
+                <path>/admin/settings</path>
+                <access>admin</access>
+            </function>
+
+            <function name="update-settings">
+                <description>Update system settings</description>
+                <method>PATCH</method>
+                <path>/admin/settings</path>
+                <access>admin</access>
+            </function>
+
+            <function name="bulk-update-registrations">
+                <description>Bulk update registration status</description>
+                <method>POST</method>
+                <path>/admin/registrations/bulk-update</path>
+                <access>admin</access>
+                <request>
+                    <body>
+                        <field name="registration_ids" type="array" required="true"/>
+                        <field name="status" type="string" required="true"/>
+                        <field name="reason" type="string"/>
+                    </body>
+                </request>
+            </function>
+        </function_group>
+    </edge_functions>
+
+    <!-- ==================== REALTIME SUBSCRIPTIONS ==================== -->
+    <realtime>
+        <description>Supabase Realtime for live updates</description>
+        <subscriptions>
+            <subscription table="notifications" event="INSERT">
+                <description>Real-time notification delivery to users</description>
+                <filter>recipient_id=eq.{user_id}</filter>
+                <client_usage>
+                    supabase.channel('notifications')
+                        .on('postgres_changes', {
+                            event: 'INSERT',
+                            schema: 'public',
+                            table: 'notifications',
+                            filter: `recipient_id=eq.${userId}`
+                        }, handler)
+                        .subscribe()
+                </client_usage>
+            </subscription>
+            
+            <subscription table="registrations" event="*">
+                <description>Live registration updates for admin dashboard</description>
+                <access>admin</access>
+            </subscription>
+            
+            <subscription table="sports" event="UPDATE">
+                <description>Live sport status updates (registration open/close, capacity)</description>
+                <columns>is_registration_open,current_participants</columns>
+            </subscription>
+            
+            <subscription table="payments" event="UPDATE">
+                <description>Payment status updates for user's active checkout</description>
+                <filter>registration_id=eq.{registration_id}</filter>
+            </subscription>
+        </subscriptions>
+    </realtime>
+
+    <!-- ==================== SECURITY ==================== -->
+    <security>
+        <authentication>
+            <item>Supabase Auth with email/password authentication</item>
+            <item>JWT tokens with configurable expiry</item>
+            <item>Email verification required for payments</item>
+        </authentication>
+        
+        <authorization>
+            <item>Row Level Security (RLS) on all tables</item>
+            <item>Role-based access: participant, coordinator, admin</item>
+            <item>is_admin() and is_coordinator() helper functions for RLS</item>
+            <item>API-level authorization checks in Edge Functions</item>
+        </authorization>
+        
+        <data_protection>
+            <item>Sensitive data never logged</item>
+            <item>Payment details stored only as references</item>
+            <item>Audit logs for all admin actions</item>
+            <item>Soft deletes (archiving) instead of hard deletes</item>
+        </data_protection>
+        
+        <api_security>
+            <item>Razorpay webhook signature verification</item>
+            <item>Edge Function secrets for API keys</item>
+            <item>CORS configuration limiting origins</item>
+            <item>Rate limiting via Supabase protection</item>
+            <item>Input validation on all endpoints</item>
+            <item>SQL injection prevention via parameterized queries</item>
+            <item>HTTPS enforced for all connections</item>
+        </api_security>
+    </security>
+
+    <!-- ==================== ENVIRONMENT VARIABLES ==================== -->
+    <environment_variables>
+        <group name="Supabase">
+            <var name="SUPABASE_URL">Supabase project URL</var>
+            <var name="SUPABASE_ANON_KEY">Supabase anonymous key for client</var>
+            <var name="SUPABASE_SERVICE_ROLE_KEY">Supabase service role key for Edge Functions</var>
+        </group>
+        
+        <group name="Razorpay">
+            <var name="RAZORPAY_KEY_ID">Razorpay API key ID</var>
+            <var name="RAZORPAY_KEY_SECRET">Razorpay API key secret</var>
+            <var name="RAZORPAY_WEBHOOK_SECRET">Razorpay webhook secret for signature verification</var>
+        </group>
+        
+        <group name="Email">
+            <var name="RESEND_API_KEY">Resend API key for email</var>
+            <var name="EMAIL_FROM">From email address</var>
+        </group>
+        
+        <group name="Application">
+            <var name="FRONTEND_URL">Frontend URL for redirects and email links</var>
+            <var name="ENVIRONMENT">development | staging | production</var>
+        </group>
+    </environment_variables>
+
+    <!-- ==================== CLIENT USAGE EXAMPLES ==================== -->
+    <client_usage>
+        <description>How to use from frontend (React/Next.js)</description>
+        
+        <example name="Initialize Supabase Client">
+            import { createClient } from '@supabase/supabase-js'
+            
+            const supabase = createClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+            )
+        </example>
+        
+        <example name="User Registration Flow">
+            // 1. Sign up
+            const { data, error } = await supabase.auth.signUp({
+                email: 'user@example.com',
+                password: 'securepassword',
+                options: {
+                    data: { 
+                        name: 'John Doe', 
+                        phone: '9876543210', 
+                        college: 'ABC Engineering College' 
+                    }
+                }
+            })
+            
+            // 2. Sign in
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: 'user@example.com',
+                password: 'securepassword'
+            })
+            
+            // 3. Get profile
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('*')
+                .single()
+        </example>
+        
+        <example name="Browse Sports">
+            // Get open sports
+            const { data: sports, error } = await supabase
+                .from('sports')
+                .select('*')
+                .eq('is_registration_open', true)
+                .order('registration_deadline', { ascending: true })
+            
+            // Get sport with details
+            const { data: sport } = await supabase
+                .from('sports')
+                .select('*')
+                .eq('slug', 'cricket-mens')
+                .single()
+        </example>
+        
+        <example name="Registration Flow">
+            // 1. Check eligibility
+            const { data: eligibility } = await supabase.functions.invoke('check-eligibility', {
+                body: { sport_id: sportId }
+            })
+            
+            // 2. Register (individual)
+            const { data: registration } = await supabase.functions.invoke('register', {
+                body: { sport_id: sportId }
+            })
+            
+            // 3. Register (team)
+            const { data: registration } = await supabase.functions.invoke('register', {
+                body: { 
+                    sport_id: sportId,
+                    is_team: true,
+                    team_name: 'Thunder Bolts',
+                    team_members: [
+                        { name: 'Player 1', email: 'p1@example.com', is_captain: true },
+                        { name: 'Player 2', phone: '9876543210' }
+                    ]
+                }
+            })
+        </example>
+        
+        <example name="Payment Flow">
+            // 1. Create order
+            const { data: order } = await supabase.functions.invoke('create-order', {
+                body: { registration_id: registrationId }
+            })
+            
+            // 2. Open Razorpay checkout
+            const razorpay = new Razorpay({
+                key: order.key_id,
+                order_id: order.order_id,
+                amount: order.amount,
+                currency: order.currency,
+                name: 'Sports Fest 2024',
+                prefill: order.prefill,
+                handler: async (response) => {
+                    // 3. Verify payment
+                    const { data } = await supabase.functions.invoke('verify-payment', {
+                        body: {
+                            razorpay_order_id: response.razorpay_order_id,
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_signature: response.razorpay_signature
+                        }
+                    })
+                }
+            })
+            razorpay.open()
+        </example>
+        
+        <example name="Real-time Notifications">
+            // Subscribe to notifications
+            const channel = supabase
+                .channel('user-notifications')
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'notifications',
+                    filter: `recipient_id=eq.${userId}`
+                }, (payload) => {
+                    showNotification(payload.new)
+                })
+                .subscribe()
+            
+            // Cleanup
+            return () => supabase.removeChannel(channel)
+        </example>
+        
+        <example name="Get My Registrations">
+            const { data: registrations } = await supabase
+                .from('registrations')
+                .select(`
+                    *,
+                    sport:sports(*),
+                    team_members(*),
+                    payments(*)
+                `)
+                .eq('participant_id', userId)
+                .order('registered_at', { ascending: false })
+        </example>
+    </client_usage>
+</backend>
