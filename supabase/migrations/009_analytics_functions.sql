@@ -23,12 +23,18 @@ BEGIN
         'colleges_count', (SELECT COUNT(DISTINCT college) FROM profiles WHERE id IN (SELECT participant_id FROM registrations WHERE status = 'confirmed'))
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_catalog;
 
 -- Get sport-specific analytics
 CREATE OR REPLACE FUNCTION get_sport_analytics(p_sport_id UUID)
 RETURNS JSON AS $$
 BEGIN
+    IF NOT is_admin() THEN
+        RAISE EXCEPTION 'Unauthorized';
+    END IF;
+
     RETURN json_build_object(
         'total_registrations', (SELECT COUNT(*) FROM registrations WHERE sport_id = p_sport_id AND status != 'cancelled'),
         'confirmed', (SELECT COUNT(*) FROM registrations WHERE sport_id = p_sport_id AND status = 'confirmed'),
@@ -39,7 +45,8 @@ BEGIN
         'colleges', (SELECT json_agg(DISTINCT pr.college) FROM registrations r JOIN profiles pr ON r.participant_id = pr.id WHERE r.sport_id = p_sport_id AND r.status = 'confirmed')
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_catalog;
 
 -- Get all sports analytics
 CREATE OR REPLACE FUNCTION get_all_sports_analytics()

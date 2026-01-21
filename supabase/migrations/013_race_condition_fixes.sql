@@ -34,6 +34,7 @@ CREATE OR REPLACE FUNCTION create_registration_with_team(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_catalog;
 AS $$
 DECLARE
     v_registration_id UUID;
@@ -140,6 +141,7 @@ CREATE OR REPLACE FUNCTION release_waitlist_position(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_catalog;
 AS $$
 BEGIN
     -- Decrement positions for registrations after the released position

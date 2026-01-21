@@ -70,6 +70,12 @@ SELECT cron.schedule(
     FROM registrations r
     JOIN sports s ON r.sport_id = s.id
     WHERE r.status = 'confirmed'
-    AND s.schedule_start::date = CURRENT_DATE + 1;
+    AND s.schedule_start::date = CURRENT_DATE + 1
+    AND NOT EXISTS (
+        SELECT 1 FROM notifications n 
+        WHERE n.related_registration_id = r.id 
+        AND n.type = 'reminder' 
+        AND n.created_at::date = CURRENT_DATE
+    );
     $$
 );
