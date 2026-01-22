@@ -21,6 +21,8 @@ import { format } from 'date-fns'
 import { toast } from 'sonner'
 
 
+import { Registration } from '@/types'
+
 // Simple CSV export helper
 const downloadCSV = (data: any[], filename: string) => {
     const headers = Object.keys(data[0] || {}).join(',')
@@ -35,14 +37,14 @@ const downloadCSV = (data: any[], filename: string) => {
 }
 
 export default function AdminRegistrationsPage() {
-  const [registrations, setRegistrations] = useState<any[]>([])
+  const [registrations, setRegistrations] = useState<Registration[]>([])
   const [loading, setLoading] = useState(true)
   const [filterSport, setFilterSport] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
 
   const fetchRegistrations = async () => {
     try {
-      const res = await api.get<{ registrations: any[] }>('/admin/registrations') 
+      const res = await api.get<{ registrations: Registration[] }>('/admin/registrations') 
       setRegistrations(res.registrations || [])
     } catch (error) {
        console.error(error)
@@ -56,7 +58,7 @@ export default function AdminRegistrationsPage() {
     fetchRegistrations()
   }, [])
 
-  const handleStatusUpdate = async (id: string, newStatus: string) => {
+  const handleStatusUpdate = async (id: string, newStatus: Registration['status']) => {
       try {
           await api.patch(`/admin/registrations/${id}`, { status: newStatus })
           toast.success(`Status updated to ${newStatus}`)
@@ -69,7 +71,7 @@ export default function AdminRegistrationsPage() {
       }
   }
   
-  const filteredRegs = registrations.filter(reg => {
+  const filteredRegs = registrations.filter((reg) => {
       if (filterSport !== 'all' && reg.sport_id !== filterSport) return false
       if (filterStatus !== 'all' && reg.status !== filterStatus) return false
       return true
@@ -88,7 +90,7 @@ export default function AdminRegistrationsPage() {
           <Button variant="outline" onClick={() => downloadCSV(filteredRegs.map(r => ({
              id: r.id, 
              sport: r.sport?.name, 
-             name: r.user?.name || r.team_name,
+             name: r.user?.full_name || r.team_name,
              status: r.status,
              amount: r.amount_paid,
              date: r.created_at

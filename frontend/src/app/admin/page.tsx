@@ -5,22 +5,48 @@ import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
+interface AdminStats {
+  total_revenue: number
+  total_registrations: number
+  active_sports: number
+  colleges_count: number
+}
+
+interface RecentRegistration {
+  id: string
+  created_at: string
+  user: {
+     full_name: string
+     email: string
+  }
+  sport: {
+     name: string
+  }
+  status: string
+  amount_paid: number
+}
+
 export default function AdminDashboardPage() {
-  const [stats, setStats] = useState<any>(null)
+  const [stats, setStats] = useState<AdminStats | null>(null)
+  const [recentActivity, setRecentActivity] = useState<RecentRegistration[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchData = async () => {
       try {
-        const res = await api.get<any>('/admin/stats')
-        setStats(res)
+        const [statsRes, activityRes] = await Promise.all([
+            api.get<AdminStats>('/admin/stats'),
+            api.get<{ registrations: RecentRegistration[] }>('/admin/registrations?limit=5')
+        ])
+        setStats(statsRes)
+        setRecentActivity(activityRes.registrations || [])
       } catch (error) {
-        console.error(error)
+        console.error('Failed to fetch admin dashboard data', error)
       } finally {
         setLoading(false)
       }
     }
-    fetchStats()
+    fetchData()
   }, [])
 
   return (
@@ -54,14 +80,34 @@ export default function AdminDashboardPage() {
           </Card>
        </div>
 
-       {/* Charts & Lists placeholder */}
        <div className="grid gap-4 md:grid-cols-2">
           <Card className="col-span-1 min-h-[300px]">
              <CardHeader><CardTitle>Recent Activity</CardTitle></CardHeader>
              <CardContent>
-                <p className="text-muted-foreground flex items-center justify-center h-[200px]">
-                   Analytics charts will appear here once enough data is collected.
-                </p>
+                {loading ? (
+                    <div className="space-y-4">
+                        {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+                    </div>
+                ) : recentActivity.length === 0 ? (
+                    <p className="text-muted-foreground flex items-center justify-center h-[200px]">
+                       No recent activity found.
+                    </p>
+                ) : (
+                    <div className="space-y-4">
+                        {recentActivity.map((reg) => (
+                            <div key={reg.id} className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0">
+                                <div>
+                                    <p className="font-medium text-sm">{reg.user?.full_name || 'Unknown User'}</p>
+                                    <p className="text-xs text-muted-foreground">Registered for {reg.sport?.name}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="font-medium text-sm">₹{reg.amount_paid}</p>
+                                    <p className="text-xs text-muted-foreground capitalize">{reg.status}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
              </CardContent>
           </Card>
        </div>

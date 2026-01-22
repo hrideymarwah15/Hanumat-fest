@@ -12,15 +12,17 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Calendar, MapPin, Users, Info, DollarSign, Clock } from 'lucide-react'
 import { format } from 'date-fns'
 
+import { Sport } from '@/types'
+
 export default function SportDetailsPage() {
   const { slug } = useParams()
-  const [sport, setSport] = useState<any>(null)
+  const [sport, setSport] = useState<Sport | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchSport = async () => {
       try {
-        const res = await api.get<{ sport: any }>(`/sports/${slug}`)
+        const res = await api.get<{ sport: Sport }>(`/sports/${slug}`)
         setSport(res.sport)
       } catch (error) {
         console.error('Failed to fetch sport details', error)

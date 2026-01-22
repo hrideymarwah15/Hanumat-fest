@@ -18,6 +18,8 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { Loader2, AlertCircle, CheckCircle } from 'lucide-react'
 
+import { Sport } from '@/types'
+
 // Schema for registration
 const registrationSchema = z.object({
   team_name: z.string().optional(),
@@ -35,7 +37,7 @@ export default function RegistrationPage() {
   const { slug } = useParams()
   const router = useRouter()
   const { user } = useAuth()
-  const [sport, setSport] = useState<any>(null)
+  const [sport, setSport] = useState<Sport | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [step, setStep] = useState(1)
@@ -63,22 +65,22 @@ export default function RegistrationPage() {
         // For now using /sports/:id where id is assumed to be resolvable or slug query
         // Implementing logic to find sport by slug from list if direct endpoint lacks slug support
         // But for production grade we assume /sports/:slug works or we fetch all and find
-        const res = await api.get<{ sports: any[] }>(`/sports?search=${slug}`) // Assuming simple search/filter
+        const res = await api.get<{ sports: Sport[] }>(`/sports?search=${slug}`) // Assuming simple search/filter
         // Better: GET /sports/:slug directly
-        let foundSport = null;
+        let foundSport: Sport | null | undefined = null;
         try {
              // Try fetching by slug directly as ID
-             const directRes = await api.get<{ sport: any }>(`/sports/${slug}`)
+             const directRes = await api.get<{ sport: Sport }>(`/sports/${slug}`)
              foundSport = directRes.sport;
         } catch(e) {
             // fallback
         }
         
         if (!foundSport && res.sports) {
-            foundSport = res.sports.find((s: any) => s.slug === slug || s.id === slug)
+            foundSport = res.sports.find((s) => s.slug === slug || s.id === slug)
         }
 
-        setSport(foundSport)
+        setSport(foundSport || null)
         
         if (foundSport) {
              // Initialize form
@@ -122,6 +124,7 @@ export default function RegistrationPage() {
   }
 
   const onSubmit = async (values: z.infer<typeof registrationSchema>) => {
+      if (!sport) return
       setSubmitting(true)
       try {
           const payload = {

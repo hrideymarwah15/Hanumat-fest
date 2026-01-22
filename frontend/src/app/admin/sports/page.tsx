@@ -17,13 +17,15 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from 'sonner'
 
+import { Sport } from '@/types'
+
 export default function AdminSportsPage() {
-  const [sports, setSports] = useState<any[]>([])
+  const [sports, setSports] = useState<Sport[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchSports = async () => {
     try {
-      const res = await api.get<{ sports: any[] }>('/sports')
+      const res = await api.get<{ sports: Sport[] }>('/sports')
       setSports(res.sports || [])
     } catch (error) {
        console.error(error)

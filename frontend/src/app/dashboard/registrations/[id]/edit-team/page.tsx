@@ -14,6 +14,8 @@ import { TeamMemberForm } from '@/components/registrations/team-member-form'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 
+import { Registration, Sport } from '@/types'
+
 const teamSchema = z.object({
   team_name: z.string().min(2, 'Team name is required'),
   team_members: z.array(z.object({
@@ -29,7 +31,7 @@ export default function EditTeamPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [sport, setSport] = useState<any>(null)
+  const [sport, setSport] = useState<Sport | null>(null)
 
   const form = useForm<z.infer<typeof teamSchema>>({
     resolver: zodResolver(teamSchema),
@@ -47,8 +49,8 @@ export default function EditTeamPage() {
   useEffect(() => {
     const fetchRegistration = async () => {
       try {
-        const res = await api.get<{ registration: any }>(`/registrations/${id}`)
-        if (!res.registration.is_team) {
+        const res = await api.get<{ registration: Registration }>(`/registrations/${id}`)
+        if (!res.registration.is_team_event) {
             toast.error('Not a team event')
             router.push(`/dashboard/registrations/${id}`)
             return
@@ -59,10 +61,10 @@ export default function EditTeamPage() {
             return
         }
 
-        setSport(res.registration.sport)
+        setSport(res.registration.sport || null)
         form.reset({
-            team_name: res.registration.team_name,
-            team_members: res.registration.team_members
+            team_name: res.registration.team_name || '',
+            team_members: res.registration.team_members || []
         })
       } catch (error) {
         console.error(error)

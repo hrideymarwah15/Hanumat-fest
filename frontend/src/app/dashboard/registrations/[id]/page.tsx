@@ -27,17 +27,19 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 
+import { Registration } from '@/types'
+
 export default function RegistrationDetailsPage() {
   const { id } = useParams()
   const router = useRouter()
-  const [registration, setRegistration] = useState<any>(null)
+  const [registration, setRegistration] = useState<Registration | null>(null)
   const [loading, setLoading] = useState(true)
   const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => {
     const fetchRegistration = async () => {
       try {
-        const res = await api.get<{ registration: any }>(`/registrations/${id}`)
+        const res = await api.get<{ registration: Registration }>(`/registrations/${id}`)
         setRegistration(res.registration)
       } catch (error) {
         console.error(error)
@@ -70,7 +72,7 @@ export default function RegistrationDetailsPage() {
      </div>
   }
 
-  if (!registration) return null
+  if (!registration || !registration.sport) return null
 
   const isPending = registration.status === 'pending' || registration.status === 'payment_pending'
   const isPaid = registration.status === 'confirmed'
@@ -137,7 +139,7 @@ export default function RegistrationDetailsPage() {
              </Card>
 
              {/* Team Details */}
-             {registration.is_team && (
+             {registration.is_team_event && (
                  <Card>
                     <CardHeader className="flex flex-row items-center justify-between">
                        <CardTitle>Team: {registration.team_name}</CardTitle>
@@ -155,7 +157,7 @@ export default function RegistrationDetailsPage() {
                              <span>Contact</span>
                           </div>
                           <Separator className="mb-2" />
-                          {registration.team_members?.map((member: any, i: number) => (
+                          {registration.team_members?.map((member, i) => (
                              <div key={i} className="grid grid-cols-3 text-sm py-2">
                                 <span>{member.name}</span>
                                 <span>{member.is_captain ? <Badge variant="outline">Captain</Badge> : 'Member'}</span>

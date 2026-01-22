@@ -103,13 +103,35 @@ function FeaturedSportsLoader() {
   )
 }
 
-const stats = [
-  { label: 'Total Registrations', value: '150+', icon: Users, color: 'text-blue-500' },
-  { label: 'Active Sports', value: '12', icon: Trophy, color: 'text-yellow-500' },
-  { label: 'Participating Colleges', value: '15', icon: Medal, color: 'text-purple-500' },
-]
-
 export default function LandingPage() {
+  const [publicStats, setPublicStats] = useState([
+    { label: 'Total Registrations', value: '-', icon: Users, color: 'text-blue-500' },
+    { label: 'Active Sports', value: '-', icon: Trophy, color: 'text-yellow-500' },
+    { label: 'Participating Colleges', value: '-', icon: Medal, color: 'text-purple-500' },
+  ])
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await api.get<{ registrations: number, sports: number, colleges: number }>('/analytics/public-stats')
+        setPublicStats([
+          { label: 'Total Registrations', value: res.registrations?.toString() || '0', icon: Users, color: 'text-blue-500' },
+          { label: 'Active Sports', value: res.sports?.toString() || '0', icon: Trophy, color: 'text-yellow-500' },
+          { label: 'Participating Colleges', value: res.colleges?.toString() || '0', icon: Medal, color: 'text-purple-500' },
+        ])
+      } catch (error) {
+        console.error('Failed to fetch public stats', error)
+        // Keep defaults or show error state if critical, but for stats defaults are fine
+        setPublicStats([
+          { label: 'Total Registrations', value: '150+', icon: Users, color: 'text-blue-500' },
+          { label: 'Active Sports', value: '12', icon: Trophy, color: 'text-yellow-500' },
+          { label: 'Participating Colleges', value: '15', icon: Medal, color: 'text-purple-500' },
+        ])
+      }
+    }
+    fetchStats()
+  }, [])
+
   return (
     <div className="min-h-screen flex flex-col font-sans">
       <Navbar />
@@ -180,7 +202,7 @@ export default function LandingPage() {
         <section className="py-12 border-y bg-muted/30">
           <div className="container mx-auto px-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {stats.map((stat, index) => (
+              {publicStats.map((stat, index) => (
                 <motion.div
                   key={stat.label}
                   initial={{ opacity: 0, scale: 0.9 }}

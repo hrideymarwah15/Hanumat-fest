@@ -11,18 +11,26 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Loader2, ShieldCheck, CreditCard, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { Registration } from '@/types'
+
+declare global {
+  interface Window {
+    Razorpay: any
+  }
+}
+
 export default function PaymentPage() {
   const { id } = useParams()
   const router = useRouter()
   const { user } = useAuth()
-  const [registration, setRegistration] = useState<any>(null)
+  const [registration, setRegistration] = useState<Registration | null>(null)
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
 
   useEffect(() => {
     const fetchRegistration = async () => {
       try {
-        const res = await api.get<{ registration: any }>(`/registrations/${id}`)
+        const res = await api.get<{ registration: Registration }>(`/registrations/${id}`)
         setRegistration(res.registration)
          // Redirect if already paid
         if (res.registration.status === 'confirmed') {
@@ -59,6 +67,12 @@ export default function PaymentPage() {
       return
     }
 
+    if (!registration || !registration.sport) {
+        toast.error('Invalid registration data')
+        setProcessing(false)
+        return
+    }
+
     try {
       // 1. Create Order
       const order = await api.post<any>('/payments/create-order', { registration_id: id })
@@ -91,7 +105,6 @@ export default function PaymentPage() {
         }
       }
 
-      // @ts-ignore
       const paymentObject = new window.Razorpay(options)
       paymentObject.open()
       
@@ -111,11 +124,11 @@ export default function PaymentPage() {
      return <div className="max-w-md mx-auto py-12"><Skeleton className="h-64" /></div>
   }
 
-  if (!registration) return null
+  if (!registration || !registration.sport) return null
 
   // Calculate generic discount logic if any (just mockup for now or use real data)
   const discount = 0
-  const total = registration.amount_to_pay || registration.sport.fees
+  const total = registration.amount_paid || registration.sport.fees
 
   return (
     <div className="max-w-md mx-auto py-12 space-y-6">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { Navbar, Footer } from '@/components/layout'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,30 @@ import { motion } from 'framer-motion'
 
 export default function ContactPage() {
   const [loading, setLoading] = useState(false)
+  const [contactInfo, setContactInfo] = useState({
+    email: 'support@hanumatfest.com',
+    phone: '+91 98765 43210',
+    address: 'University Sports Complex, New Delhi'
+  })
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+        try {
+            // Attempt to fetch public settings or admin settings if accessible
+            const res = await api.get<any>('/admin/settings')
+            if (res) {
+                setContactInfo({
+                    email: res.contact_email || 'support@hanumatfest.com',
+                    phone: res.contact_phone || '+91 98765 43210',
+                    address: 'University Sports Complex, New Delhi'
+                })
+            }
+        } catch (error) {
+            console.error('Failed to fetch contact settings', error)
+        }
+    }
+    fetchSettings()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,7 +54,7 @@ export default function ContactPage() {
     } catch (error) {
         console.error('Contact form failed', error)
         // Fallback or user notification
-        toast.error('Failed to send message. Please email us directly at support@hanumatfest.com')
+        toast.error('Failed to send message. Please email us directly at ' + contactInfo.email)
     } finally {
         setLoading(false)
     }
@@ -64,7 +88,7 @@ export default function ContactPage() {
                           </div>
                           <div>
                              <h3 className="font-semibold">Email Us</h3>
-                             <p className="text-muted-foreground">support@hanumatfest.com</p>
+                             <p className="text-muted-foreground">{contactInfo.email}</p>
                           </div>
                        </CardContent>
                     </Card>
@@ -75,7 +99,7 @@ export default function ContactPage() {
                           </div>
                           <div>
                              <h3 className="font-semibold">Call Us</h3>
-                             <p className="text-muted-foreground">+91 98765 43210</p>
+                             <p className="text-muted-foreground">{contactInfo.phone}</p>
                           </div>
                        </CardContent>
                     </Card>
@@ -86,7 +110,7 @@ export default function ContactPage() {
                           </div>
                           <div>
                              <h3 className="font-semibold">Visit Us</h3>
-                             <p className="text-muted-foreground">University Sports Complex, New Delhi</p>
+                             <p className="text-muted-foreground">{contactInfo.address}</p>
                           </div>
                        </CardContent>
                     </Card>
