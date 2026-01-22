@@ -96,10 +96,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_catalog;
 
 -- Grant execute to authenticated users (RLS on registrations will control access)
-REVOKE ALL ON FUNCTION update_team_members FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION update_team_members TO authenticated, service_role;
+REVOKE ALL ON FUNCTION update_team_members(UUID, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION update_team_members(UUID, TEXT) TO authenticated, service_role;
 
-COMMENT ON FUNCTION update_team_members IS 
+COMMENT ON FUNCTION update_team_members(UUID, TEXT) IS 
 'Atomically updates team members for a registration. Deletes existing members and inserts new ones in a single transaction.';
 
 
@@ -153,44 +153,7 @@ COMMENT ON FUNCTION assign_waitlist_position IS
 'Atomically assigns the next waitlist position for a sport. Uses advisory locks to prevent race conditions.';
 
 
--- ============================================
--- 3. release_waitlist_position - Cleanup waitlist after failed registration
--- Used by: POST /registrations (on rollback/cleanup)
--- ============================================
 
-CREATE OR REPLACE FUNCTION release_waitlist_position(
-    p_sport_id UUID,
-    p_position INTEGER
-)
-RETURNS VOID AS $$
-BEGIN
-    -- Validate inputs
-    IF p_position IS NULL OR p_position < 1 THEN
-        RAISE EXCEPTION 'Invalid waitlist position: %', p_position;
-    END IF;
-    
-    -- Acquire advisory lock for this sport's waitlist
-    PERFORM pg_advisory_xact_lock(hashtext('waitlist_release_' || p_sport_id::TEXT));
-    
-    -- Compact waitlist positions: shift all positions after the released one down by 1
-    UPDATE registrations
-    SET waitlist_position = waitlist_position - 1
-    WHERE sport_id = p_sport_id
-    AND status = 'waitlist'
-    AND waitlist_position > p_position;
-    
-    -- Note: The registration that was being created but failed should NOT exist
-    -- This function is called during cleanup, so we just compact the remaining positions
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = public, pg_catalog;
-
--- Grant execute permissions
-REVOKE ALL ON FUNCTION release_waitlist_position FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION release_waitlist_position TO authenticated, service_role;
-
-COMMENT ON FUNCTION release_waitlist_position IS 
-'Releases a waitlist position and compacts the remaining positions. Called during registration rollback.';
 
 
 -- ============================================

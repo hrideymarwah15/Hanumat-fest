@@ -32,6 +32,32 @@ CREATE TRIGGER set_profiles_updated_at
 -- Enable RLS
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
+-- ============================================
+-- HELPER FUNCTIONS (Moved from 001 to resolve dependency)
+-- ============================================
+
+-- Function to check if current user is admin
+-- SET search_path prevents search_path hijacking attacks
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.profiles 
+        WHERE id = auth.uid() AND role = 'admin'
+    );
+$$ LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, public;
+
+-- Function to check if current user is coordinator or higher
+-- SET search_path prevents search_path hijacking attacks
+CREATE OR REPLACE FUNCTION is_coordinator()
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.profiles 
+        WHERE id = auth.uid() AND role IN ('admin', 'coordinator')
+    );
+$$ LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, public;
+
 -- RLS Policies
 CREATE POLICY "Users can view own profile"
     ON profiles FOR SELECT
@@ -78,3 +104,5 @@ CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW
     EXECUTE FUNCTION handle_new_user();
+
+
