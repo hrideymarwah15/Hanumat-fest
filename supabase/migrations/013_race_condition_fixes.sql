@@ -23,6 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_refund_id
 -- ============================================================================
 
 -- RPC to atomically create a registration with team members in a single transaction
+DROP FUNCTION IF EXISTS create_registration_with_team(UUID, UUID, TEXT, JSONB, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION create_registration_with_team(
     p_sport_id UUID,
     p_participant_id UUID,
@@ -34,7 +35,7 @@ CREATE OR REPLACE FUNCTION create_registration_with_team(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog;
+SET search_path = public, pg_catalog
 AS $$
 DECLARE
     v_registration_id UUID;
@@ -134,6 +135,7 @@ $$;
 -- ============================================================================
 
 -- RPC to release a reserved waitlist position on failure
+DROP FUNCTION IF EXISTS release_waitlist_position(UUID, INT);
 CREATE OR REPLACE FUNCTION release_waitlist_position(
     p_sport_id UUID,
     p_position INT
@@ -141,7 +143,7 @@ CREATE OR REPLACE FUNCTION release_waitlist_position(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog;
+SET search_path = public, pg_catalog
 AS $$
 BEGIN
     -- Decrement positions for registrations after the released position

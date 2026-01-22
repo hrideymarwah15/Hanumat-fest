@@ -28,7 +28,7 @@
 supabase/
 ├── config.toml                    # Supabase project configuration
 ├── seed.sql                       # Sample data for development
-├── migrations/                    # Database migrations (001-013)
+├── migrations/                    # Database migrations (001-014)
 │   ├── 001_initial_setup.sql
 │   ├── 002_profiles_table.sql
 │   ├── 003_sports_table.sql
@@ -41,7 +41,8 @@ supabase/
 │   ├── 010_scheduled_jobs.sql
 │   ├── 011_storage_buckets.sql
 │   ├── 012_security_fixes.sql
-│   └── 013_race_condition_fixes.sql
+│   ├── 013_race_condition_fixes.sql
+│   └── 014_missing_functions.sql
 └── functions/                     # Edge Functions
     ├── _shared/                   # Shared utilities
     │   ├── utils.ts
@@ -446,6 +447,21 @@ supabase/
 | `get_college_analytics()` | JSON | College-wise analytics | SECURITY DEFINER, SET search_path |
 | `get_revenue_analytics(p_period)` | JSON | Revenue analytics (daily/weekly/monthly) | SECURITY DEFINER, SET search_path |
 | `get_registration_trends()` | JSON | Registration trends (30 days) | SECURITY DEFINER, SET search_path |
+| `get_public_stats()` | JSON | Public statistics for home page (no auth required) | SECURITY INVOKER |
+
+### Team Functions
+
+| Function | Returns | Description | Security |
+|----------|---------|-------------|----------|
+| `update_team_members(p_registration_id, p_team_members)` | VOID | Atomically update team members for a registration | SECURITY DEFINER, SET search_path, Advisory Lock |
+
+### Waitlist Functions
+
+| Function | Returns | Description | Security |
+|----------|---------|-------------|----------|
+| `assign_waitlist_position(p_sport_id)` | INTEGER | Atomically assign next waitlist position | SECURITY DEFINER, SET search_path, Advisory Lock |
+| `release_waitlist_position(p_sport_id, p_position)` | VOID | Release and compact waitlist positions | SECURITY DEFINER, SET search_path, Advisory Lock |
+| `compact_waitlist_on_cancel()` | TRIGGER | Auto-compact waitlist when registration cancelled | SECURITY DEFINER, SET search_path |
 
 ---
 
@@ -1092,9 +1108,42 @@ Send broadcast notification to multiple users.
 
 **File:** `functions/analytics/index.ts`
 
-All endpoints require admin access.
+#### GET /analytics/public-stats (Public)
 
-#### GET /analytics/dashboard
+Get public statistics for home page. **No authentication required.**
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "total_registrations": 150,
+    "active_sports": 10,
+    "total_sports": 12,
+    "colleges_participating": 15,
+    "total_participants": 100,
+    "sports_by_category": {
+      "indoor": 4,
+      "outdoor": 5,
+      "esports": 2,
+      "athletics": 1
+    },
+    "upcoming_deadlines": [
+      {
+        "name": "Cricket",
+        "slug": "cricket",
+        "category": "outdoor",
+        "registration_deadline": "2024-02-15T23:59:59Z",
+        "spots_remaining": 5
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### GET /analytics/dashboard (Admin)
 
 Get dashboard statistics.
 

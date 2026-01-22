@@ -16,9 +16,10 @@ INSERT INTO colleges (name, short_name, city) VALUES
     ('Manipal Institute of Technology', 'MIT', 'Manipal');
 
 -- Insert sample sports
-INSERT INTO sports (name, category, description, rules, is_team_event, team_size_min, team_size_max, fees, registration_start, registration_deadline, schedule_start, venue, max_participants, is_registration_open) VALUES
+INSERT INTO sports (name, sport_code, category, description, rules, is_team_event, team_size_min, team_size_max, fees, registration_start, registration_deadline, schedule_start, venue, max_participants, is_registration_open) VALUES
     (
         'Cricket',
+        'CRI',
         'outdoor',
         'T20 format cricket tournament with exciting matches and great prizes.',
         '1. Each team must have 11 players\n2. T20 format - 20 overs per side\n3. Standard ICC rules apply\n4. Decision of umpires is final',
@@ -35,6 +36,7 @@ INSERT INTO sports (name, category, description, rules, is_team_event, team_size
     ),
     (
         'Football',
+        'FOO',
         'outdoor',
         '5-a-side football tournament. Fast-paced action guaranteed!',
         '1. Teams of 5 players each\n2. 20 minutes per half\n3. No offside rule\n4. Rolling substitutions allowed',
@@ -51,6 +53,7 @@ INSERT INTO sports (name, category, description, rules, is_team_event, team_size
     ),
     (
         'Badminton Singles',
+        'BAD',
         'indoor',
         'Individual badminton championship. Show your skills!',
         '1. Best of 3 games\n2. Each game to 21 points\n3. BWF rules apply\n4. Players must bring their own rackets',
@@ -67,6 +70,7 @@ INSERT INTO sports (name, category, description, rules, is_team_event, team_size
     ),
     (
         'Badminton Doubles',
+        'DBL',
         'indoor',
         'Team up and dominate the court!',
         '1. Best of 3 games\n2. Each game to 21 points\n3. BWF rules apply\n4. Players must bring their own rackets',
@@ -83,6 +87,7 @@ INSERT INTO sports (name, category, description, rules, is_team_event, team_size
     ),
     (
         'Table Tennis',
+        'TTE',
         'indoor',
         'Singles table tennis tournament. Precision and speed!',
         '1. Best of 5 games\n2. Each game to 11 points\n3. ITTF rules apply',
@@ -99,6 +104,7 @@ INSERT INTO sports (name, category, description, rules, is_team_event, team_size
     ),
     (
         'Chess',
+        'CHE',
         'indoor',
         'Classical chess tournament. Outsmart your opponents!',
         '1. 30 minutes per player\n2. FIDE rules apply\n3. Touch-move rule enforced',
@@ -115,6 +121,7 @@ INSERT INTO sports (name, category, description, rules, is_team_event, team_size
     ),
     (
         'Valorant',
+        'VAL',
         'esports',
         '5v5 Valorant tournament. May the best team win!',
         '1. Best of 3 maps\n2. Standard competitive rules\n3. Teams must have 5 players\n4. Substitutes allowed',
@@ -131,6 +138,7 @@ INSERT INTO sports (name, category, description, rules, is_team_event, team_size
     ),
     (
         '100m Sprint',
+        'SPR',
         'athletics',
         'The classic 100 meter dash. Who is the fastest?',
         '1. Standard athletics rules\n2. Spikes allowed\n3. False start results in disqualification',
@@ -147,6 +155,7 @@ INSERT INTO sports (name, category, description, rules, is_team_event, team_size
     ),
     (
         'Long Jump',
+        'LJU',
         'athletics',
         'Test your jumping prowess!',
         '1. 3 attempts per participant\n2. Best jump counts\n3. Standard athletics rules',
@@ -163,6 +172,7 @@ INSERT INTO sports (name, category, description, rules, is_team_event, team_size
     ),
     (
         'Basketball 3x3',
+        'BAS',
         'outdoor',
         '3-on-3 basketball street style!',
         '1. 10 minute games\n2. First to 21 or highest score wins\n3. FIBA 3x3 rules apply',

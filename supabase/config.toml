@@ -19,7 +19,7 @@ port = 54322
 # Port used by db diff command to initialise the shadow database.
 shadow_port = 54320
 # The database major version to use.
-major_version = 15
+major_version = 17
 
 [studio]
 enabled = true
@@ -78,7 +78,7 @@ enabled = false
 # Edge Functions configuration
 [functions]
 # Enable functions
-enabled = true
+# enabled = true
 
 [analytics]
 enabled = false

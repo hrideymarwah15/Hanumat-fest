@@ -1,14 +1,15 @@
--- ============================================
+  
 -- Migration: 011_storage_buckets
 -- Description: Storage buckets and policies
 -- ============================================
 
--- Create storage buckets
+-- Create storage buckets (ignore if already exist)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES 
     ('sport-images', 'sport-images', true, 5242880, ARRAY['image/jpeg', 'image/png', 'image/webp']),
     ('avatars', 'avatars', true, 2097152, ARRAY['image/jpeg', 'image/png', 'image/webp']),
-    ('receipts', 'receipts', false, 1048576, ARRAY['application/pdf']);
+    ('receipts', 'receipts', false, 1048576, ARRAY['application/pdf'])
+ON CONFLICT (id) DO NOTHING;
 
 -- Sport Images Policies
 CREATE POLICY "Anyone can view sport images"

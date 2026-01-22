@@ -14,16 +14,38 @@ serve(async (req: Request) => {
     return corsResponse();
   }
 
-  // All analytics endpoints require admin access
-  if (!(await isAdmin(req))) {
-    return error("Unauthorized", 403);
-  }
-
   const url = new URL(req.url);
   const pathParts = url.pathname.split("/").filter(Boolean);
   const action = pathParts.length > 1 ? pathParts[1] : null;
 
   const adminClient = createAdminClient();
+
+  // ============================================
+  // PUBLIC ENDPOINT - No authentication required
+  // GET /analytics/public-stats - Public statistics for home page
+  // ============================================
+  if (req.method === "GET" && action === "public-stats") {
+    try {
+      const { data: stats, error: rpcError } = await adminClient.rpc("get_public_stats");
+
+      if (rpcError) {
+        console.error("Failed to get public stats:", rpcError);
+        return error("Failed to get statistics", 500);
+      }
+
+      return success(stats);
+    } catch (err) {
+      console.error("Public stats error:", err);
+      return error("Failed to get statistics", 500);
+    }
+  }
+
+  // ============================================
+  // ADMIN ENDPOINTS - Require admin authentication
+  // ============================================
+  if (!(await isAdmin(req))) {
+    return error("Unauthorized", 403);
+  }
 
   // GET /analytics/dashboard - Dashboard stats
   if (req.method === "GET" && action === "dashboard") {
