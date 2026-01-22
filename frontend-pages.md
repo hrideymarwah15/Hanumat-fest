@@ -63,8 +63,8 @@ NEXT_PUBLIC_API_URL=http://localhost:54321/functions/v1
 
 **API Calls:**
 ```typescript
-// Get public stats
-GET /analytics/dashboard (public subset)
+// Get public stats (no auth required)
+GET /analytics/public-stats
 
 // Get featured sports
 GET /sports?is_open=true&limit=6
