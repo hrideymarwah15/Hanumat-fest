@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+  <role>
+    You are an elite-level product designer, frontend architect, and motion engineer.
+    You think in systems, user psychology, and performance constraints.
+    Your task is to deeply refactor an existing sports fest website to achieve
+    maximum clarity, emotional impact, and smoothness — without losing its identity.
+  </role>
+
+  <context>
+    The website is for HANUMANT 2026, the Rishihood University Sports Fest.
+    The current UI is visually appealing but suffers from clutter, weak hierarchy,
+    generic copy, and glitchy background transitions.
+    The site must feel premium, intentional, and cinematic.
+  </context>
+
+  <design_philosophy>
+    <principle>Clarity over decoration.</principle>
+    <principle>Motion must explain or guide, never distract.</principle>
+    <principle>Images tell the story; text anchors meaning.</principle>
+    <principle>Scrolling equals progression, not randomness.</principle>
+  </design_philosophy>
+
+  <primary_objectives>
+    <objective>Convert the entire site into a scroll-driven background storytelling experience.</objective>
+    <objective>Create a full-viewport hero with layered content and transparent navigation.</objective>
+    <objective>Eliminate all visual noise and redundant UI elements.</objective>
+    <objective>Fix all motion and background transition glitches.</objective>
+    <objective>Strengthen sports identity and Rishihood University branding.</objective>
+    <objective>Improve conversion, readability, and perceived quality.</objective>
+  </primary_objectives>
+
+  <hero_restructure>
+    <instruction>
+      Make the hero section a true full-screen background (100vw x 100vh).
+      The background must be a high-impact sports image or video frame.
+    </instruction>
+    <instruction>
+      Navbar must be fully transparent on the hero and overlay the background.
+      On scroll, it should gain a blurred or solid background for readability.
+    </instruction>
+    <instruction>
+      All hero text, CTAs, and badges must sit on top as layers.
+      Preserve existing content but re-align it into a clean vertical hierarchy.
+    </instruction>
+    <instruction>
+      Add a subtle gradient overlay to ensure text contrast across all backgrounds.
+    </instruction>
+  </hero_restructure>
+
+  <scroll_background_system>
+    <instruction>
+      Implement a single fixed or sticky background container for the entire page.
+    </instruction>
+    <instruction>
+      Map each major section (Hero, About, Sports, Events, Contact) to one background image.
+    </instruction>
+    <instruction>
+      Background images must transition based purely on scroll position.
+      Use smooth opacity interpolation or crossfade.
+    </instruction>
+    <instruction>
+      Preload the next background image before transition begins.
+      Absolutely no white flashes, flicker, or tearing is allowed.
+    </instruction>
+    <instruction>
+      On fast scroll, transitions must snap cleanly without lag.
+    </instruction>
+  </scroll_background_system>
+
+  <motion_cleanup>
+    <instruction>
+      Remove all decorative or random animations.
+    </instruction>
+    <instruction>
+      Retain only motion that:
+      - Indicates scroll progression
+      - Reinforces section transitions
+      - Guides user attention
+    </instruction>
+    <instruction>
+      Tie motion timing to scroll position instead of time-based loops.
+    </instruction>
+  </motion_cleanup>
+
+  <visual_simplification>
+    <instruction>
+      Remove floating dots, abstract orbits, and background blobs unless they directly
+      reinforce sports motion or directional flow.
+    </instruction>
+    <instruction>
+      Reduce background decoration density by at least 60%.
+    </instruction>
+    <instruction>
+      Let photography and typography carry the visual weight.
+    </instruction>
+  </visual_simplification>
+
+  <typography_system>
+    <instruction>
+      Establish a strict hierarchy:
+      - H1: HANUMANT 2026
+      - H2: Rishihood University Sports Fest
+      - Body: Maximum 2 concise lines
+    </instruction>
+    <instruction>
+      Increase contrast between headings and body text.
+    </instruction>
+    <instruction>
+      Avoid long paragraphs. Prioritize punchy, authoritative statements.
+    </instruction>
+  </typography_system>
+
+  <cta_optimization>
+    <instruction>
+      Make "Register Now" the single dominant CTA.
+    </instruction>
+    <instruction>
+      Secondary actions must be visually subordinate (outline or muted).
+    </instruction>
+    <instruction>
+      CTAs should remain visible and legible against all backgrounds.
+    </instruction>
+  </cta_optimization>
+
+  <copy_refinement>
+    <instruction>
+      Replace all generic motivational copy.
+    </instruction>
+    <instruction>
+      New copy must explicitly reference:
+      - Competitive sports culture
+      - Rishihood University identity
+      - Inter-university participation
+    </instruction>
+    <instruction>
+      Tone: confident, athletic, grounded, not poetic or vague.
+    </instruction>
+  </copy_refinement>
+
+  <information_architecture>
+    <instruction>
+      Introduce a compact facts strip early in the scroll:
+      - Dates
+      - Location
+      - Number of sports
+      - Prize pool
+    </instruction>
+    <instruction>
+      Information must be scannable within 3 seconds.
+    </instruction>
+  </information_architecture>
+
+  <navbar_behavior>
+    <instruction>
+      Navbar must be fixed at all times.
+    </instruction>
+    <instruction>
+      Transparent on hero.
+      Solid or blurred background after scrolling begins.
+    </instruction>
+    <instruction>
+      Ensure constant contrast and legibility.
+    </instruction>
+  </navbar_behavior>
+
+  <performance_constraints>
+    <instruction>
+      Optimize for smooth 60fps scrolling.
+    </instruction>
+    <instruction>
+      Disable heavy parallax effects on low-end or mobile devices.
+    </instruction>
+    <instruction>
+      Lazy-load non-critical assets.
+    </instruction>
+  </performance_constraints>
+
+  <technical_preferences>
+    <preference>Use GSAP or Framer Motion for scroll-linked animations.</preference>
+    <preference>Use requestAnimationFrame where custom logic is needed.</preference>
+    <preference>Use semantic HTML and accessible contrast ratios.</preference>
+  </technical_preferences>
+
+  <success_metrics>
+    <metric>Zero visual glitches during scroll.</metric>
+    <metric>Immediate clarity within first 3 seconds.</metric>
+    <metric>Scroll feels cinematic and intentional.</metric>
+    <metric>Site feels premium and event-worthy.</metric>
+  </success_metrics>
+</prompt>

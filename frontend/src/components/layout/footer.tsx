@@ -1,90 +1,103 @@
 import Link from 'next/link'
-import { Facebook, Twitter, Instagram, Mail, MapPin, Phone } from 'lucide-react'
+import { Instagram, Mail, MapPin, Phone, Twitter, Youtube } from 'lucide-react'
 
 export function Footer() {
   return (
-    <footer className="border-t bg-muted/40">
-      <div className="container py-12 md:py-16">
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+    <footer className="bg-[#0e0e0e] text-white">
+      <div className="container py-16">
+        <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
+          {/* Brand */}
           <div>
-            <h3 className="text-lg font-bold mb-4 bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Hanumat Fest</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              The ultimate university sports festival celebrating athleticism, teamwork, and competitive spirit.
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-[#b20e38] rounded-lg flex items-center justify-center">
+                <span className="text-white font-heading text-xl">H</span>
+              </div>
+              <span className="text-2xl font-heading tracking-wider">HANUMANT</span>
+            </div>
+            <p className="text-white/60 text-sm leading-relaxed mb-6">
+              Rishihood University Sports Fest 2026. Celebrating strength, discipline, and unity through competitive sports.
             </p>
             <div className="flex gap-4">
-              <Link href="#" className="text-muted-foreground hover:text-primary">
-                <Facebook className="h-5 w-5" />
+              <Link href="#" className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center hover:bg-[#b20e38] transition-colors">
+                <Instagram className="h-5 w-5" />
               </Link>
-              <Link href="#" className="text-muted-foreground hover:text-primary">
+              <Link href="#" className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center hover:bg-[#b20e38] transition-colors">
                 <Twitter className="h-5 w-5" />
               </Link>
-              <Link href="#" className="text-muted-foreground hover:text-primary">
-                <Instagram className="h-5 w-5" />
+              <Link href="#" className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center hover:bg-[#b20e38] transition-colors">
+                <Youtube className="h-5 w-5" />
               </Link>
             </div>
           </div>
           
+          {/* Quick Links */}
           <div>
-            <h4 className="font-semibold mb-4">Quick Links</h4>
-            <ul className="space-y-2 text-sm">
-              <li>
-                <Link href="/sports" className="text-muted-foreground hover:text-primary">Find Sports</Link>
-              </li>
-              <li>
-                <Link href="/about" className="text-muted-foreground hover:text-primary">About Us</Link>
-              </li>
-              <li>
-                <Link href="/contact" className="text-muted-foreground hover:text-primary">Contact Support</Link>
-              </li>
-              <li>
-                <Link href="/login" className="text-muted-foreground hover:text-primary">Participant Login</Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold mb-4">Sports Categories</h4>
-            <ul className="space-y-2 text-sm">
-              <li>
-                <Link href="/sports?category=outdoor" className="text-muted-foreground hover:text-primary">Outdoor Games</Link>
-              </li>
-              <li>
-                <Link href="/sports?category=indoor" className="text-muted-foreground hover:text-primary">Indoor Games</Link>
-              </li>
-              <li>
-                <Link href="/sports?category=esports" className="text-muted-foreground hover:text-primary">Esports</Link>
-              </li>
-              <li>
-                <Link href="/sports?category=athletics" className="text-muted-foreground hover:text-primary">Athletics</Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold mb-4">Contact Us</h4>
+            <h4 className="font-heading text-lg tracking-wide mb-6">QUICK LINKS</h4>
             <ul className="space-y-3 text-sm">
-              <li className="flex items-center gap-2 text-muted-foreground">
-                <Mail className="h-4 w-4" />
-                <span>contact@hanumatfest.com</span>
+              <li>
+                <Link href="/" className="text-white/60 hover:text-[#b20e38] transition-colors">Home</Link>
               </li>
-              <li className="flex items-center gap-2 text-muted-foreground">
-                <Phone className="h-4 w-4" />
+              <li>
+                <Link href="/about" className="text-white/60 hover:text-[#b20e38] transition-colors">About Hanumant</Link>
+              </li>
+              <li>
+                <Link href="/sports" className="text-white/60 hover:text-[#b20e38] transition-colors">Sports Events</Link>
+              </li>
+              <li>
+                <Link href="/team" className="text-white/60 hover:text-[#b20e38] transition-colors">Meet the Team</Link>
+              </li>
+              <li>
+                <Link href="/contact" className="text-white/60 hover:text-[#b20e38] transition-colors">Contact Us</Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Sports */}
+          <div>
+            <h4 className="font-heading text-lg tracking-wide mb-6">SPORTS</h4>
+            <ul className="space-y-3 text-sm">
+              <li>
+                <Link href="/sports/cricket" className="text-white/60 hover:text-[#b20e38] transition-colors">Cricket</Link>
+              </li>
+              <li>
+                <Link href="/sports/football" className="text-white/60 hover:text-[#b20e38] transition-colors">Football</Link>
+              </li>
+              <li>
+                <Link href="/sports/basketball" className="text-white/60 hover:text-[#b20e38] transition-colors">Basketball</Link>
+              </li>
+              <li>
+                <Link href="/sports/volleyball" className="text-white/60 hover:text-[#b20e38] transition-colors">Volleyball</Link>
+              </li>
+              <li>
+                <Link href="/sports/badminton" className="text-white/60 hover:text-[#b20e38] transition-colors">Badminton</Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Contact */}
+          <div>
+            <h4 className="font-heading text-lg tracking-wide mb-6">CONTACT</h4>
+            <ul className="space-y-4 text-sm">
+              <li className="flex items-start gap-3 text-white/60">
+                <MapPin className="h-5 w-5 text-[#b20e38] shrink-0 mt-0.5" />
+                <span>Rishihood University<br />Sonipat, Haryana, India</span>
+              </li>
+              <li className="flex items-center gap-3 text-white/60">
+                <Mail className="h-5 w-5 text-[#b20e38] shrink-0" />
+                <span>sports@rishihood.edu.in</span>
+              </li>
+              <li className="flex items-center gap-3 text-white/60">
+                <Phone className="h-5 w-5 text-[#b20e38] shrink-0" />
                 <span>+91 98765 43210</span>
-              </li>
-              <li className="flex items-start gap-2 text-muted-foreground">
-                <MapPin className="h-4 w-4 mt-1" />
-                <span>University Sports Complex,<br />New Delhi, India</span>
               </li>
             </ul>
           </div>
         </div>
         
-        <div className="border-t mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
-          <p>© {new Date().getFullYear()} Hanumat Fest. All rights reserved.</p>
-          <div className="flex gap-6">
-            <Link href="/terms" className="hover:text-primary">Terms of Service</Link>
-            <Link href="/privacy" className="hover:text-primary">Privacy Policy</Link>
-          </div>
+        {/* Bottom Bar */}
+        <div className="border-t border-white/10 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-white/40">
+          <p>© 2026 Hanumant Fest | Rishihood University. All rights reserved.</p>
+          <p className="font-heading tracking-wide text-[#b20e38]">7-8 FEBRUARY 2026</p>
         </div>
       </div>
     </footer>
